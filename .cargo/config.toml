@@ -1,0 +1,6 @@
+[build]
+target = "targets/x86_64-pintos.json"
+
+[unstable]
+build-std = ["core"]
+json-target-spec = true

@@ -1,0 +1,17 @@
+[package]
+name = "pintos_rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[profile.dev]
+panic = "abort"
+debug = 2
+opt-level = 0
+lto = false
+
+[profile.release]
+panic = "abort"
+debug = 2
+opt-level = 2
