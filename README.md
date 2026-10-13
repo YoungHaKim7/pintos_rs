@@ -1,7 +1,13 @@
 # pintos_rs
-- https://github.com/casys-kaist/pintos-kaist
 
-# 도움받을 문서들
-- https://casys-kaist.github.io/pintos-kaist/introduction/getting_started.html
-- https://www.scs.stanford.edu/25sp-cs212/pintos/pintos_1.html
-- https://pintos-os.org/
+```bash
+# pintos_rs — build & run in QEMU
+#
+# Recipes:
+#   just build            # compile kernel, package build/os.dsk
+#   just run ARGS...      # run in QEMU, e.g. just run "-q run alarm-single"
+#   just runt TEST        # run a threads test, e.g. just runt alarm-single
+#   just gdb              # QEMU waiting for gdb (attach: just gdb-attach)
+#   just clean
+```
+
