@@ -77,7 +77,15 @@ fn panic(info: &PanicInfo) -> ! {
             &[Arg::Str(loc.file().as_bytes()), Arg::I(loc.line() as i64)],
         );
     }
-    vprintf("%s.\n", &[Arg::Str(info.payload_as_str().as_bytes())]);
+    /* Extract the panic payload as a &str when possible (panic!("msg")
+    and assertion messages both arrive as &str). */
+    let payload = info.payload();
+    let msg: &str = if let Some(s) = (payload as &dyn core::any::Any).downcast_ref::<&str>() {
+        s
+    } else {
+        "<non-string panic payload>"
+    };
+    vprintf("%s.\n", &[Arg::Str(msg.as_bytes())]);
 
     devices::serial::serial_flush();
     if unsafe { *core::ptr::addr_of!(threads::init::POWER_OFF_WHEN_DONE) } {

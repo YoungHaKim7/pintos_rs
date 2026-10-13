@@ -131,8 +131,8 @@ unsafe fn move_cursor() {
     unsafe {
         /* See [FREEVGA] under "Manipulating the Text-mode Cursor". */
         let cp = (CX + COL_CNT * CY) as u16;
-        outw(0x3d4, 0x0e | (cp & 0xff00));
-        outw(0x3d4, 0x0f | (cp << 8));
+        outw(0x3d4, 0x0e | ((cp >> 8) & 0xff) as u16);
+        outw(0x3d4, 0x0f | ((cp << 8) & 0xff00));
     }
 }
 

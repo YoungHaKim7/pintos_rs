@@ -27,46 +27,55 @@ static mut ARGV: [*mut u8; (LOADER_ARGS_LEN as usize) / 2 + 1] =
 /// Pintos main program.  Called by start.S with no arguments.
 #[unsafe(no_mangle)]
 pub extern "C" fn main() -> i32 {
-    /* Clear BSS. */
-    bss_init();
-
-    /* Break command line into arguments and parse options. */
-    let argv = read_command_line();
-    let argv = parse_options(argv);
-
-    /* M1+: thread_init/console_init/palloc/malloc/paging/...
-    are inserted here as they are ported. */
-
-    vprintf("Boot complete.\n", &[]);
-
-    /* Run actions specified on kernel command line. */
-    run_actions(argv);
-
-    /* Finish up. */
     unsafe {
+        /* Clear BSS. */
+        bss_init();
+
+        /* Break command line into arguments and parse options. */
+        let argv = read_command_line();
+        let argv = parse_options(argv);
+
+        /* M1+: thread_init/console_init/palloc/malloc/paging/...
+        are inserted here as they are ported. */
+
+        vprintf("Boot complete.\n", &[]);
+
+        /* Run actions specified on kernel command line. */
+        run_actions(argv);
+
+        /* Finish up. */
         if POWER_OFF_WHEN_DONE {
             power_off();
         }
+        // M1+: thread_exit().
+        intr_disable();
+        loop {}
     }
-    // M1+: thread_exit().
-    intr_disable();
-    loop {}
 }
 
 /* Clear BSS: the start and end of the segment are recorded by the
 linker as _start_bss and _end_bss (see kernel.lds). */
 fn bss_init() {
     unsafe {
-        #[unsafe(link_name = "_start_bss")]
-        static BSS_START: u8 = 0;
-        #[unsafe(link_name = "_end_bss")]
-        static BSS_END: u8 = 0;
+        unsafe extern "C" {
+            static _start_bss: u8;
+            static _end_bss: u8;
+        }
 
-        let start = &BSS_START as *const u8 as *mut u8;
-        let end = &BSS_END as *const u8;
+        let start = ptr_addr_of!(_start_bss) as *mut u8;
+        let end = ptr_addr_of!(_end_bss) as *mut u8;
         memset(start, 0, end.offset_from(start) as usize);
     }
 }
+
+/* Helper: address of an extern static without going through a place
+projection (edition-2024 friendly). */
+macro_rules! ptr_addr_of {
+    ($e:expr) => {
+        core::ptr::addr_of!($e)
+    };
+}
+use ptr_addr_of;
 
 /* Breaks the kernel command line into words and returns them as
 an argv-like array. */
@@ -115,8 +124,8 @@ unsafe fn parse_options(mut argv: *mut *mut u8) -> *mut *mut u8 {
             argv = argv.add(1);
 
             let mut save_ptr: *mut u8 = core::ptr::null_mut();
-            let name = strtok_r(arg, b"=", &raw mut save_ptr);
-            let value = strtok_r(core::ptr::null_mut(), b"", &raw mut save_ptr);
+            let name = strtok_r(arg, b"=".as_ptr(), &raw mut save_ptr);
+            let value = strtok_r(core::ptr::null_mut(), b"".as_ptr(), &raw mut save_ptr);
 
             if strcmp(name, b"-h\0".as_ptr()) == 0 {
                 usage();

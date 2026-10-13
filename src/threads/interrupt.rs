@@ -49,7 +49,7 @@ pub fn intr_set_level(level: IntrLevel) -> IntrLevel {
 /// Returns the current interrupt state. */
 #[inline]
 pub fn intr_get_level() -> IntrLevel {
-    if read_eflags() & FLAG_IF != 0 {
+    if unsafe { read_eflags() } & FLAG_IF != 0 {
         IntrLevel::On
     } else {
         IntrLevel::Off

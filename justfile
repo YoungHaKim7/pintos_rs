@@ -19,17 +19,20 @@ build:
     cargo build
     cp target/x86_64-pintos/debug/pintos_rs build/kernel.elf
     # Flat binary from the ELF (uses LMA = 0x200000).
-    objcopy -O binary build/kernel.elf build/kernel.bin
+    objcopy -O binary -R .note -R .comment -S build/kernel.elf build/kernel.bin
     # Pad kernel.bin to a 4096 multiple and compute loader page count.
     SIZE=$(stat -c %s build/kernel.bin)
     PAGES=$(( (SIZE + 4095) / 4096 ))
     PAD=$(( PAGES * 4096 - SIZE ))
     [ "$PAD" -ne 0 ] && dd if=/dev/zero bs=1 count=$PAD >> build/kernel.bin 2>/dev/null
     echo "kernel.bin: $SIZE bytes, KERNEL_LOAD_PAGES=$PAGES"
-    # Loader: MBR at 0x7c00 with baked-in kernel size.
+    # Loader: MBR at 0x7c00 with baked-in kernel size. Must be EXACTLY
+    # 512 bytes (the BIOS loads one sector; kernel.bin starts at sector 1),
+    # so drop the .note.gnu.property CET section modern gcc appends.
     gcc -c -DKERNEL_LOAD_PAGES=$PAGES -I asm/include -o build/loader.o asm/loader.S
-    ld -m elf_x86_64 -Ttext 0x7c00 -o build/loader.elf build/loader.o
-    objcopy -O binary build/loader.elf build/loader.bin
+    ld -N -e start -Ttext 0x7c00 -o build/loader.elf build/loader.o
+    objcopy -O binary -R .note.gnu.property build/loader.elf build/loader.bin
+    truncate -s 512 build/loader.bin
     # Final disk image.
     cat build/loader.bin build/kernel.bin > build/os.dsk
 
@@ -61,8 +64,9 @@ build-release:
     PAD=$(( PAGES * 4096 - SIZE ))
     [ "$PAD" -ne 0 ] && dd if=/dev/zero bs=1 count=$PAD >> build/kernel.bin 2>/dev/null
     gcc -c -DKERNEL_LOAD_PAGES=$PAGES -I asm/include -o build/loader.o asm/loader.S
-    ld -m elf_x86_64 -Ttext 0x7c00 -o build/loader.elf build/loader.o
-    objcopy -O binary build/loader.elf build/loader.bin
+    ld -N -e start -Ttext 0x7c00 -o build/loader.elf build/loader.o
+    objcopy -O binary -R .note.gnu.property build/loader.elf build/loader.bin
+    truncate -s 512 build/loader.bin
     cat build/loader.bin build/kernel.bin > build/os.dsk
 
 # QEMU paused, waiting for gdb on :1234.

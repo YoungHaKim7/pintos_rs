@@ -7,8 +7,10 @@
 pub const LOADER_BASE: u64 = 0x7c00; /* Physical address of loader's base. */
 pub const LOADER_END: u64 = 0x7e00; /* Physical address of end of loader. */
 
-/* Physical address of kernel base. */
-pub const LOADER_KERN_BASE: u64 = 0x8004_0000_0000;
+/* Physical address of kernel base: 0x8004000000 = 512GB + 64MB,
+i.e. pml4[1], pdpt[0], pde[32] — exactly the region start.S's boot
+page tables map.  (Eleven hex digits; beware adding a zero.) */
+pub const LOADER_KERN_BASE: u64 = 0x80_0400_0000;
 
 /* Physical address where the loader loads the kernel. */
 pub const LOADER_PHYS_BASE: u64 = 0x200000;

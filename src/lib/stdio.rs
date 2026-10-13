@@ -353,7 +353,7 @@ fn emit_str(args: &core::fmt::Arguments, output: OutputFn, aux: *mut ()) {
         aux,
         _marker: core::marker::PhantomData,
     }
-    .write_fmt(args);
+    .write_fmt(*args);
 }
 
 /// Parses conversion option characters starting at FMT[I], updating I to

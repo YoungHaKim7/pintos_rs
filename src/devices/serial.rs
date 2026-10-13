@@ -47,7 +47,7 @@ const LSR_DR: u8 = 0x01; /* Data Ready: received data byte is in RBR. */
 const LSR_THRE: u8 = 0x20; /* THR Empty. */
 
 /* Transmission mode. */
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 enum Mode {
     Uninit,
     Poll,
@@ -82,7 +82,7 @@ pub fn serial_putc(byte: u8) {
     let old_level = intr_disable();
 
     unsafe {
-        let mode = MODE;
+        let mode = *core::ptr::addr_of!(MODE);
         if mode != Mode::Queue {
             /* If we're not set up for interrupt-driven I/O yet,
             use dumb polling to transmit a byte. */

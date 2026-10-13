@@ -13,7 +13,7 @@ static mut LEVEL: i32 = 0;
 user-specific message.  (C also printed the enclosing function
 name; Rust has no stable equivalent, so file:line only.) */
 #[unsafe(no_mangle)]
-pub extern "C" fn debug_panic(file: &str, line: i32, message: &str, slots: &[Arg]) -> ! {
+pub extern "C" fn debug_panic(file: &str, line: u32, message: &str, slots: &[Arg]) -> ! {
     intr_disable();
     console_panic();
 
@@ -53,11 +53,12 @@ pub fn debug_backtrace() {
 
     unsafe {
         let mut frame: *mut *mut *mut u8;
-        core::arch::asm!("movq %rbp, %0", out(reg) frame, options(nomem, nostack));
+        core::arch::asm!("mov {0}, rbp", out(reg) frame, options(nomem, nostack, preserves_flags));
 
         vprintf("Call stack:", &[]);
         while !frame.is_null() && !(*frame).is_null() {
-            vprintf(" %p", &[Arg::P(frame[1] as usize)]);
+            let ret = *frame.add(1);
+            vprintf(" %p", &[Arg::P(ret as usize)]);
             frame = *frame as *mut *mut *mut u8;
         }
         vprintf(".\n", &[]);

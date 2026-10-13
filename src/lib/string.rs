@@ -47,7 +47,7 @@ pub unsafe fn memmove(dst_: *mut u8, src_: *const u8, size: usize) -> *mut u8 {
         let mut dst = dst_;
         let mut src = src_;
         let mut n = size;
-        if dst < src {
+        if (dst as usize) < (src as usize) {
             while n > 0 {
                 *dst = *src;
                 dst = dst.add(1);
@@ -71,7 +71,10 @@ pub unsafe fn memmove(dst_: *mut u8, src_: *const u8, size: usize) -> *mut u8 {
 /* Compares A and B, treating each as an array of SIZE unsigned
 bytes.  Returns a value less than, equal to, or greater than
 zero based on the first differing bytes. */
-pub unsafe fn memcmp(a_: *const u8, b_: *const u8, size: usize) -> i32 {
+/* Exported under the C symbol name: core's slice comparison (and any
+compiler_builtins lowering) expects to link against `memcmp`. */
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn memcmp(a_: *const u8, b_: *const u8, size: usize) -> i32 {
     unsafe {
         let mut a = a_;
         let mut b = b_;
