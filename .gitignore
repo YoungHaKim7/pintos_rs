@@ -1,3 +1,4 @@
+build/
 *.txt
 Kernel_dev_in_Rust/
 pintos-kaist/
