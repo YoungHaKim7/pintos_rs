@@ -82,7 +82,10 @@ an argv-like array. */
 unsafe fn read_command_line() -> *mut *mut u8 {
     unsafe {
         let argv = &raw mut ARGV as *mut *mut u8;
-        let argc = *(ptov_arg_cnt() as *const u32);
+        /* LOADER_ARG_CNT (0x7d7a) is not 4-byte aligned; C reads it
+        unaligned, Rust must use read_unaligned to match (and to avoid
+        the runtime alignment check). */
+        let argc = core::ptr::read_unaligned(ptov_arg_cnt() as *const u32);
         let mut p = ptov_args() as *mut u8;
         let end = p.wrapping_add(LOADER_ARGS_LEN as usize);
 
@@ -124,8 +127,10 @@ unsafe fn parse_options(mut argv: *mut *mut u8) -> *mut *mut u8 {
             argv = argv.add(1);
 
             let mut save_ptr: *mut u8 = core::ptr::null_mut();
-            let name = strtok_r(arg, b"=".as_ptr(), &raw mut save_ptr);
-            let value = strtok_r(core::ptr::null_mut(), b"".as_ptr(), &raw mut save_ptr);
+            /* NB: byte-string literals need an explicit \0 to act as C
+            strings (`b"=".as_ptr()` has no terminator). */
+            let name = strtok_r(arg, b"=\0".as_ptr(), &raw mut save_ptr);
+            let value = strtok_r(core::ptr::null_mut(), b"\0".as_ptr(), &raw mut save_ptr);
 
             if strcmp(name, b"-h\0".as_ptr()) == 0 {
                 usage();
