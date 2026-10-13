@@ -11,10 +11,13 @@
 #![allow(dead_code)]
 
 mod devices;
+mod filesys;
 mod intrinsic;
 mod lib;
 mod tests;
 mod threads;
+mod userprog;
+mod vm;
 
 use core::panic::PanicInfo;
 
