@@ -98,12 +98,12 @@ pub type OutputFn = fn(u8, *mut ());
 #[derive(Default, Clone, Copy)]
 struct Conversion {
     /* Flags. */
-    minus: bool,  /* '-' */
-    plus: bool,   /* '+' */
-    space: bool,  /* ' ' */
-    pound: bool,  /* '#' */
-    zero: bool,   /* '0' */
-    group: bool,  /* '\'' */
+    minus: bool, /* '-' */
+    plus: bool,  /* '+' */
+    space: bool, /* ' ' */
+    pound: bool, /* '#' */
+    zero: bool,  /* '0' */
+    group: bool, /* '\'' */
 
     /* Minimum field width. */
     width: i32,
@@ -118,7 +118,7 @@ struct Conversion {
 #[derive(Default, Clone, Copy, PartialEq)]
 enum IntType {
     #[default]
-    Int,      /* (none) */
+    Int, /* (none) */
     Char,     /* hh */
     Short,    /* h */
     Intmax,   /* j */
@@ -135,8 +135,18 @@ struct IntegerBase {
     group: i32,            /* Number of digits to group with ' flag */
 }
 
-const BASE_D: IntegerBase = IntegerBase { base: 10, digits: b"0123456789\0", x: 0, group: 3 };
-const BASE_O: IntegerBase = IntegerBase { base: 8, digits: b"01234567\0", x: 0, group: 3 };
+const BASE_D: IntegerBase = IntegerBase {
+    base: 10,
+    digits: b"0123456789\0",
+    x: 0,
+    group: 3,
+};
+const BASE_O: IntegerBase = IntegerBase {
+    base: 8,
+    digits: b"01234567\0",
+    x: 0,
+    group: 3,
+};
 const BASE_X: IntegerBase = IntegerBase {
     base: 16,
     digits: b"0123456789abcdef\0",
@@ -304,7 +314,7 @@ pub fn __vprintf(format: &str, slots: &[Arg], output: OutputFn, aux: *mut ()) {
 
             b'f' | b'e' | b'E' | b'g' | b'G' | b'n' => {
                 /* We don't support floating-point arithmetic,
-                   and %n can be part of a security hole. */
+                and %n can be part of a security hole. */
                 let msg = core::format_args!("<<no %{} in kernel>>", fmt[i] as char);
                 emit_str(&msg, output, aux);
             }
@@ -338,14 +348,22 @@ fn emit_str(args: &core::fmt::Arguments, output: OutputFn, aux: *mut ()) {
         }
     }
 
-    let _ = Sink { output, aux, _marker: core::marker::PhantomData }.write_fmt(args);
+    let _ = Sink {
+        output,
+        aux,
+        _marker: core::marker::PhantomData,
+    }
+    .write_fmt(args);
 }
 
 /// Parses conversion option characters starting at FMT[I], updating I to
 /// index the conversion character itself (e.g. the `d` in `%d`).
 /// Consumes `*` width/precision slots from ARGS.
 fn parse_conversion(fmt: &[u8], i: &mut usize, args: &mut Args) -> Conversion {
-    let mut c = Conversion { precision: -1, ..Default::default() };
+    let mut c = Conversion {
+        precision: -1,
+        ..Default::default()
+    };
 
     /* Parse flag characters. */
     loop {
@@ -454,10 +472,10 @@ fn parse_conversion(fmt: &[u8], i: &mut usize, args: &mut Args) -> Conversion {
 }
 
 /* Performs an integer conversion, writing output to OUTPUT with
-   auxiliary data AUX.  The integer converted has absolute value
-   VALUE.  If IS_SIGNED is true, does a signed conversion with
-   NEGATIVE indicating a negative value; otherwise does an
-   unsigned conversion and ignores NEGATIVE. */
+auxiliary data AUX.  The integer converted has absolute value
+VALUE.  If IS_SIGNED is true, does a signed conversion with
+NEGATIVE indicating a negative value; otherwise does an
+unsigned conversion and ignores NEGATIVE. */
 fn format_integer(
     mut value: u64,
     is_signed: bool,
@@ -499,7 +517,11 @@ fn format_integer(
     }
 
     /* Append enough zeros to match precision. */
-    let precision = if c.precision < 0 { 1 } else { c.precision as usize };
+    let precision = if c.precision < 0 {
+        1
+    } else {
+        c.precision as usize
+    };
     while cp < precision && cp < buf.len() - 1 {
         buf[cp] = b'0';
         cp += 1;
@@ -546,7 +568,7 @@ fn output_dup(ch: u8, cnt: usize, output: OutputFn, aux: *mut ()) {
 }
 
 /* Formats the bytes in STRING according to the conversion
-   specified in C. */
+specified in C. */
 fn format_string(string: &[u8], c: &Conversion, output: OutputFn, aux: *mut ()) {
     let length = string.len();
     if c.width as usize > length && !c.minus {
@@ -583,18 +605,18 @@ fn vsnprintf_helper(ch: u8, aux_: *mut ()) {
 /// space for BUF_SIZE bytes.  Writes at most BUF_SIZE - 1 bytes followed
 /// by a NUL terminator.  Returns the number of characters that would
 /// have been written had there been enough room.
-pub unsafe fn vsnprintf(
-    buffer: *mut u8,
-    buf_size: usize,
-    format: &str,
-    slots: &[Arg],
-) -> i32 {
+pub unsafe fn vsnprintf(buffer: *mut u8, buf_size: usize, format: &str, slots: &[Arg]) -> i32 {
     let mut aux = VsnprintfAux {
         p: buffer,
         length: 0,
         max_length: if buf_size > 0 { buf_size as i32 - 1 } else { 0 },
     };
-    __vprintf(format, slots, vsnprintf_helper, &mut aux as *mut VsnprintfAux as *mut ());
+    __vprintf(
+        format,
+        slots,
+        vsnprintf_helper,
+        &mut aux as *mut VsnprintfAux as *mut (),
+    );
     if buf_size > 0 {
         unsafe { *aux.p = 0 };
     }
@@ -602,8 +624,8 @@ pub unsafe fn vsnprintf(
 }
 
 /* Dumps the SIZE bytes in BUF to the console as hex bytes
-   arranged 16 per line, starting at offset OFS.  If ASCII is true
-   then the corresponding ASCII characters are rendered too. */
+arranged 16 per line, starting at offset OFS.  If ASCII is true
+then the corresponding ASCII characters are rendered too. */
 pub unsafe fn hex_dump(mut ofs: usize, mut buf: *const u8, mut size: usize, ascii: bool) {
     unsafe {
         const PER_LINE: usize = 16;

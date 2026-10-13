@@ -1,43 +1,87 @@
-//! pintos_rs — KAIST Pintos (x86_64) ported to Rust.
+//! pintos_rs — the KAIST Pintos x86-64 teaching kernel, ported to Rust.
 //!
-//! Boot chain: `loader.S` (BIOS MBR) loads this kernel at physical
-//! 0x200000 and jumps to `_start` (asm/start.S), which switches to
-//! 64-bit long mode and calls `main` below (link address 0x8004200000).
+//! Boot chain: BIOS → `loader.S` (MBR) → `start.S` (32→64-bit) →
+//! `main()` in `threads/init.rs`.  The port is deliberately faithful
+//! to the C original: same module layout, same data structures,
+//! same algorithms, same console output.
 
 #![no_std]
 #![no_main]
+#![allow(static_mut_refs)]
+#![allow(dead_code)]
 
+mod devices;
 mod intrinsic;
-
-mod threads {
-    pub mod loader;
-    pub mod pte;
-    pub mod vaddr;
-}
+mod lib;
+mod tests;
+mod threads;
 
 use core::panic::PanicInfo;
 
-/// C entry point called by asm/start.S after the 32→64-bit transition.
-#[unsafe(no_mangle)]
-pub extern "C" fn main() -> ! {
-    // Minimal pipeline test: write to COM1 (0x3f8) in polled mode, then
-    // power QEMU off through the isa-debug-exit-compatible port 0x604.
-    // (Replaced by the full boot sequence as modules land.)
-    unsafe {
-        for &b in b"pintos_rs: boot pipeline OK\n" {
-            while intrinsic::inb(0x3f8 + 5) & 0x20 == 0 {}
-            intrinsic::outb(0x3f8, b);
-        }
-        intrinsic::outw(0x604, 0x2000);
-    }
-    loop {
-        core::hint::spin_loop();
-    }
+use lib::kernel::console::{console_panic, vprintf};
+use lib::stdio::Arg;
+use threads::interrupt::intr_disable;
+
+/* printf-style output macros.
+C's printf(fmt, ...) becomes printf!(fmt, args...), which routes
+through the faithful __vprintf formatter. */
+
+/// Formatted console output (port of `printf`).
+#[macro_export]
+macro_rules! printf {
+    ($fmt:expr) => {
+        $crate::lib::kernel::console::vprintf($fmt, &[])
+    };
+    ($fmt:expr, $($arg:expr),+ $(,)?) => {
+        $crate::lib::kernel::console::vprintf($fmt, &[$($crate::lib::stdio::Arg::from($arg)),+])
+    };
 }
 
+/// Fatal kernel panic (port of `PANIC`).
+#[macro_export]
+macro_rules! PANIC {
+    ($fmt:expr) => {
+        $crate::lib::debug::debug_panic(file!(), line!(), $fmt, &[])
+    };
+    ($fmt:expr, $($arg:expr),+ $(,)?) => {
+        $crate::lib::debug::debug_panic(
+            file!(),
+            line!(),
+            $fmt,
+            &[$($crate::lib::stdio::Arg::from($arg)),+],
+        )
+    };
+}
+
+/// Assertion (port of `ASSERT`).
+#[macro_export]
+macro_rules! ASSERT {
+    ($cond:expr) => {
+        if !$cond {
+            $crate::PANIC!(concat!("assertion `", stringify!($cond), "' failed."));
+        }
+    };
+}
+
+/* Kernel panic handler for Rust-level panics (out-of-bounds index,
+unwrap on None, ...).  Routes through the same console machinery. */
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {
-        core::hint::spin_loop();
+fn panic(info: &PanicInfo) -> ! {
+    intr_disable();
+    console_panic();
+
+    vprintf("Kernel PANIC (rust) ", &[]);
+    if let Some(loc) = info.location() {
+        vprintf(
+            "at %s:%d: ",
+            &[Arg::Str(loc.file().as_bytes()), Arg::I(loc.line() as i64)],
+        );
     }
+    vprintf("%s.\n", &[Arg::Str(info.payload_as_str().as_bytes())]);
+
+    devices::serial::serial_flush();
+    if unsafe { *core::ptr::addr_of!(threads::init::POWER_OFF_WHEN_DONE) } {
+        threads::init::power_off();
+    }
+    loop {}
 }

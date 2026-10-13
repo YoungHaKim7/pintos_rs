@@ -35,6 +35,11 @@ bootstrap:
 #### Enable Physical Address Extension
 	movl %cr4, %eax
 	orl $CR4_PAE, %eax
+	# Also enable OSFXSR: the Rust kernel is compiled with baseline
+	# x86-64 codegen (SSE2 available to the compiler).  The kernel
+	# itself never executes floating-point code, but stray SSE
+	# instructions (e.g. struct copies) must not #UD.
+	orl $0x200, %eax		/* CR4_OSFXSR */
 	movl %eax, %cr4
 
 

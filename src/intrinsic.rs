@@ -17,20 +17,20 @@ pub type PAddr = u64;
 #[inline]
 pub unsafe fn inb(port: u16) -> u8 {
     let data: u8;
-    unsafe { asm!("inb %w1, %0", out("a") data, in("d") port, options(nomem, nostack)) };
+    unsafe { asm!("inb %dx, %al", lateout("al") data, in("dx") port, options(nomem, nostack)) };
     data
 }
 
 /* Reads CNT bytes from PORT, one after another, and stores them
-   into the buffer starting at ADDR. */
+into the buffer starting at ADDR. */
 #[inline]
 pub unsafe fn insb(port: u16, addr: *mut u8, cnt: usize) {
     unsafe {
         asm!(
             "cld; rep insb",
-            inlateout("D") addr => _,
-            inlateout("c") cnt => _,
-            in("d") port,
+            inlateout("rdi") addr => _,
+            inlateout("rcx") cnt => _,
+            in("dx") port,
             options(nostack)
         );
     }
@@ -40,7 +40,7 @@ pub unsafe fn insb(port: u16, addr: *mut u8, cnt: usize) {
 #[inline]
 pub unsafe fn inw(port: u16) -> u16 {
     let data: u16;
-    unsafe { asm!("inw %w1, %0", out("a") data, in("d") port, options(nomem, nostack)) };
+    unsafe { asm!("inw %dx, %ax", lateout("ax") data, in("dx") port, options(nomem, nostack)) };
     data
 }
 
@@ -50,9 +50,9 @@ pub unsafe fn insw(port: u16, addr: *mut u16, cnt: usize) {
     unsafe {
         asm!(
             "cld; rep insw",
-            inlateout("D") addr => _,
-            inlateout("c") cnt => _,
-            in("d") port,
+            inlateout("rdi") addr => _,
+            inlateout("rcx") cnt => _,
+            in("dx") port,
             options(nostack)
         );
     }
@@ -62,14 +62,14 @@ pub unsafe fn insw(port: u16, addr: *mut u16, cnt: usize) {
 #[inline]
 pub unsafe fn inl(port: u16) -> u32 {
     let data: u32;
-    unsafe { asm!("inl %w1, %0", out("a") data, in("d") port, options(nomem, nostack)) };
+    unsafe { asm!("inl %dx, %eax", lateout("eax") data, in("dx") port, options(nomem, nostack)) };
     data
 }
 
 /* Writes byte DATA to PORT. */
 #[inline]
 pub unsafe fn outb(port: u16, data: u8) {
-    unsafe { asm!("outb %0, %w1", in("a") data, in("d") port, options(nomem, nostack)) };
+    unsafe { asm!("outb %al, %dx", in("al") data, in("dx") port, options(nomem, nostack)) };
 }
 
 /* Writes to PORT each byte of data in the CNT-byte buffer at ADDR. */
@@ -78,9 +78,9 @@ pub unsafe fn outsb(port: u16, addr: *const u8, cnt: usize) {
     unsafe {
         asm!(
             "cld; rep outsb",
-            inlateout("S") addr => _,
-            inlateout("c") cnt => _,
-            in("d") port,
+            inlateout("rsi") addr => _,
+            inlateout("rcx") cnt => _,
+            in("dx") port,
             options(nostack)
         );
     }
@@ -89,7 +89,7 @@ pub unsafe fn outsb(port: u16, addr: *const u8, cnt: usize) {
 /* Writes the 16-bit DATA to PORT. */
 #[inline]
 pub unsafe fn outw(port: u16, data: u16) {
-    unsafe { asm!("outw %0, %w1", in("a") data, in("d") port, options(nomem, nostack)) };
+    unsafe { asm!("outw %ax, %dx", in("ax") data, in("dx") port, options(nomem, nostack)) };
 }
 
 /* Writes to PORT each 16-bit unit of data in the CNT-unit buffer at ADDR. */
@@ -98,9 +98,9 @@ pub unsafe fn outsw(port: u16, addr: *const u16, cnt: usize) {
     unsafe {
         asm!(
             "cld; rep outsw",
-            inlateout("S") addr => _,
-            inlateout("c") cnt => _,
-            in("d") port,
+            inlateout("rsi") addr => _,
+            inlateout("rcx") cnt => _,
+            in("dx") port,
             options(nostack)
         );
     }
@@ -109,7 +109,7 @@ pub unsafe fn outsw(port: u16, addr: *const u16, cnt: usize) {
 /* Writes the 32-bit DATA to PORT. */
 #[inline]
 pub unsafe fn outl(port: u16, data: u32) {
-    unsafe { asm!("outl %0, %w1", in("a") data, in("d") port, options(nomem, nostack)) };
+    unsafe { asm!("outl %eax, %dx", in("eax") data, in("dx") port, options(nomem, nostack)) };
 }
 
 /* ------------------------- Control registers -------------------------- */
@@ -188,13 +188,21 @@ pub unsafe fn read_eflags() -> u64 {
 pub unsafe fn write_msr(ecx: u32, val: u64) {
     let eax = val as u32;
     let edx = (val >> 32) as u32;
-    unsafe { asm!("wrmsr", in("c") ecx, in("d") edx, in("a") eax, options(nomem, nostack)) };
+    unsafe {
+        asm!(
+            "wrmsr",
+            in("ecx") ecx,
+            in("edx") edx,
+            in("eax") eax,
+            options(nomem, nostack)
+        )
+    };
 }
 
 /* --------------------------- Raw register reads ------------------------ */
 
 /* The following are used while a fresh thread/kernel stack is being
-   set up, so they read registers directly. */
+set up, so they read registers directly. */
 
 #[inline]
 pub unsafe fn rrax() -> u64 {

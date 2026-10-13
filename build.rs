@@ -65,6 +65,8 @@ fn main() {
 
     // ---- 3. Tell cargo how to link ---------------------------------------
     println!("cargo:rustc-link-arg=-T{}", lds.display());
+    // Parity with the C build's LDFLAGS (`--no-relax`).
+    println!("cargo:rustc-link-arg=--no-relax");
     // Do not pull in default objects/libs; we are freestanding.
     println!("cargo:rustc-link-arg=-nostdlib");
 

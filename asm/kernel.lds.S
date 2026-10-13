@@ -12,7 +12,7 @@ SECTIONS
 	PROVIDE(start = .);
   /* Kernel starts with code, followed by read-only data and writable data. */
 	.text : AT(LOADER_PHYS_BASE) {
-		*(.entry)
+		KEEP(*(.entry))
 		*(.text .text.* .stub .gnu.linkonce.t.*)
 	} = 0x90
 	.rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
@@ -24,7 +24,7 @@ SECTIONS
 
   /* BSS (zero-initialized data) is after everything else. */
   PROVIDE(_start_bss = .);
-	.bss : { *(.bss .bss.* COMMON) }
+	.bss : { *(.bss .bss.* .sbss .sbss.* COMMON) }
   PROVIDE(_end_bss = .);
 
   PROVIDE(_end = .);
