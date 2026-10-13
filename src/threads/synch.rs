@@ -1,0 +1,398 @@
+//! Port of `threads/synch.c` — semaphores, locks, condition variables.
+//!
+//! Extended over the C baseline for priority scheduling and priority
+//! donation (project 1): semaphore waiter lists are kept ordered by
+//! descending thread priority, so `sema_up` always wakes the
+//! highest-priority waiter (and preempts when it outranks the current
+//! thread); `lock_acquire`/`lock_release` trigger donation through
+//! `thread::thread_donate_priority()`; `cond_signal` wakes the waiter
+//! whose blocked thread has the highest priority.
+
+use crate::lib::kernel::list::{
+    List, ListElem, list_empty, list_entry, list_front, list_init, list_insert_ordered, list_max,
+    list_pop_front, list_push_back, list_remove,
+};
+use crate::threads::interrupt::{intr_context, intr_disable, intr_set_level};
+use crate::threads::thread::{
+    Thread, thread_block, thread_cmp_priority, thread_current, thread_donate_priority,
+    thread_unblock, thread_yield,
+};
+
+/* A counting semaphore. */
+#[repr(C)]
+pub struct Semaphore {
+    pub value: u32,    /* Current value. */
+    pub waiters: List, /* List of waiting threads. */
+}
+
+/* Lock. */
+#[repr(C)]
+pub struct Lock {
+    pub holder: *mut Thread,  /* Thread holding lock (for debugging). */
+    pub semaphore: Semaphore, /* Binary semaphore controlling access. */
+}
+
+/* Condition variable. */
+#[repr(C)]
+pub struct Condition {
+    pub waiters: List, /* List of waiting threads. */
+}
+
+/* One semaphore in a list. */
+#[repr(C)]
+struct SemaphoreElem {
+    elem: ListElem,       /* List element. */
+    semaphore: Semaphore, /* This semaphore. */
+}
+
+/* Initializes semaphore SEMA to VALUE.  A semaphore is a
+nonnegative integer along with two atomic operators for
+manipulating it:
+
+- down or "P": wait for the value to become positive, then
+decrement it.
+
+- up or "V": increment the value (and wake up one waiting
+thread, if any). */
+pub unsafe fn sema_init(sema: *mut Semaphore, value: u32) {
+    unsafe {
+        crate::ASSERT!(sema != core::ptr::null_mut());
+
+        (*sema).value = value;
+        list_init(&raw mut (*sema).waiters);
+    }
+}
+
+/* Inserts thread T into SEMA's waiter list, keeping the list
+ordered by descending thread priority (highest-priority waiter
+at the front).  This lets sema_up() wake the highest-priority
+waiter and gives the priority-donation code in thread.rs a
+directly readable view of a lock's waiters.  (The C original
+used a plain list_push_back here.) */
+pub(crate) unsafe fn sema_push_waiter_ordered(s: *mut Semaphore, t: *mut Thread) {
+    unsafe {
+        list_insert_ordered(
+            &raw mut (*s).waiters,
+            &raw mut (*t).elem,
+            thread_cmp_priority,
+            core::ptr::null_mut(),
+        );
+    }
+}
+
+/* Down or "P" operation on a semaphore.  Waits for SEMA's value
+to become positive and then atomically decrements it.
+
+This function may sleep, so it must not be called within an
+interrupt handler.  This function may be called with
+interrupts disabled, but if it sleeps then the next scheduled
+thread will probably turn interrupts back on. This is
+sema_down function. */
+pub unsafe fn sema_down(sema: *mut Semaphore) {
+    unsafe {
+        crate::ASSERT!(sema != core::ptr::null_mut());
+        crate::ASSERT!(!intr_context());
+
+        let old_level = intr_disable();
+        while (*sema).value == 0 {
+            sema_push_waiter_ordered(sema, thread_current());
+            thread_block();
+        }
+        (*sema).value -= 1;
+        intr_set_level(old_level);
+    }
+}
+
+/* Down or "P" operation on a semaphore, but only if the
+semaphore is not already 0.  Returns true if the semaphore is
+decremented, false otherwise.
+
+This function may be called from an interrupt handler. */
+pub unsafe fn sema_try_down(sema: *mut Semaphore) -> bool {
+    unsafe {
+        crate::ASSERT!(sema != core::ptr::null_mut());
+
+        let old_level = intr_disable();
+
+        let success;
+        if (*sema).value > 0 {
+            (*sema).value -= 1;
+            success = true;
+        } else {
+            success = false;
+        }
+        intr_set_level(old_level);
+
+        success
+    }
+}
+
+/* Up or "V" operation on a semaphore.  Increments SEMA's value
+and wakes up one thread of those waiting for SEMA, if any.
+
+This function may be called from an interrupt handler. */
+pub unsafe fn sema_up(sema: *mut Semaphore) {
+    unsafe {
+        crate::ASSERT!(sema != core::ptr::null_mut());
+
+        let old_level = intr_disable();
+        if !list_empty(&raw const (*sema).waiters) {
+            /* The waiters are kept ordered by descending priority,
+            so the front waiter is the highest-priority one. */
+            let t = list_entry::<Thread>(
+                list_pop_front(&raw mut (*sema).waiters),
+                core::mem::offset_of!(Thread, elem),
+            );
+            thread_unblock(t);
+
+            /* If the woken thread has higher priority than the
+            running thread, yield the CPU. */
+            let cur = thread_current();
+            if thread_cmp_priority(
+                core::ptr::addr_of!((*t).elem),
+                core::ptr::addr_of!((*cur).elem),
+                core::ptr::null_mut(),
+            ) {
+                thread_yield();
+            }
+        }
+        (*sema).value += 1;
+        intr_set_level(old_level);
+    }
+}
+
+/* Initializes LOCK.  A lock can be held by at most a single
+thread at any given time.  Our locks are not "recursive", that
+is, it is an error for the thread currently holding a lock to
+try to acquire that lock.
+
+A lock is a specialization of a semaphore with an initial
+value of 1.  The difference between a lock and such a
+semaphore is twofold.  First, a semaphore can have a value
+greater than 1, but a lock can only be owned by a single
+thread at a time.  Second, a semaphore does not have an owner,
+meaning that one thread can "down" the semaphore and then
+another one "up" it, but with a lock the same thread must both
+acquire and release it.  When these restrictions prove
+onerous, that's a good sign that a semaphore should be used,
+instead. */
+pub unsafe fn lock_init(lock: *mut Lock) {
+    unsafe {
+        crate::ASSERT!(lock != core::ptr::null_mut());
+
+        (*lock).holder = core::ptr::null_mut();
+        sema_init(&raw mut (*lock).semaphore, 1);
+    }
+}
+
+/* Acquires LOCK, sleeping until it becomes available if
+necessary.  The lock must not already be held by the current
+thread.
+
+This function may sleep, so it must not be called within an
+interrupt handler.  This function may be called with
+interrupts disabled, but interrupts will be turned back on if
+we need to sleep. */
+pub unsafe fn lock_acquire(lock: *mut Lock) {
+    unsafe {
+        crate::ASSERT!(lock != core::ptr::null_mut());
+        crate::ASSERT!(!intr_context());
+        crate::ASSERT!(!lock_held_by_current_thread(lock));
+
+        if !(*lock).holder.is_null() {
+            /* The lock is held by another thread: we are about to
+            join its waiters and sleep.  Trigger priority donation
+            so the holder (and, transitively, anyone the holder is
+            waiting on) runs at our priority until we get the lock
+            back.  The donation bookkeeping itself lives in
+            thread.rs; it reads this lock's ordered waiter list. */
+            thread_donate_priority();
+        }
+        sema_down(&raw mut (*lock).semaphore);
+        (*lock).holder = thread_current();
+    }
+}
+
+/* Tries to acquires LOCK and returns true if successful or false
+on failure.  The lock must not already be held by the current
+thread.
+
+This function will not sleep, so it may be called within an
+interrupt handler. */
+pub unsafe fn lock_try_acquire(lock: *mut Lock) -> bool {
+    unsafe {
+        crate::ASSERT!(lock != core::ptr::null_mut());
+        crate::ASSERT!(!lock_held_by_current_thread(lock));
+
+        let success = sema_try_down(&raw mut (*lock).semaphore);
+        if success {
+            (*lock).holder = thread_current();
+        }
+        success
+    }
+}
+
+/* Releases LOCK, which must be owned by the current thread.
+This is lock_release function.
+
+An interrupt handler cannot acquire a lock, so it does not
+make sense to try to release a lock within an interrupt
+handler. */
+pub unsafe fn lock_release(lock: *mut Lock) {
+    unsafe {
+        crate::ASSERT!(lock != core::ptr::null_mut());
+        crate::ASSERT!(lock_held_by_current_thread(lock));
+
+        (*lock).holder = core::ptr::null_mut();
+        sema_up(&raw mut (*lock).semaphore);
+
+        /* The highest-priority waiter no longer donates to us, so
+        our effective priority may have dropped: refresh it (the
+        donation refresh itself lives in thread.rs). */
+        thread_donate_priority();
+    }
+}
+
+/* Returns true if the current thread holds LOCK, false
+otherwise.  (Note that testing whether some other thread holds
+a lock would be racy.) */
+pub unsafe fn lock_held_by_current_thread(lock: *const Lock) -> bool {
+    unsafe {
+        crate::ASSERT!(lock != core::ptr::null_mut());
+
+        (*lock).holder == thread_current()
+    }
+}
+
+/* Initializes condition variable COND.  A condition variable
+allows one piece of code to signal a condition and cooperating
+code to receive the signal and act upon it. */
+pub unsafe fn cond_init(cond: *mut Condition) {
+    unsafe {
+        crate::ASSERT!(cond != core::ptr::null_mut());
+
+        list_init(&raw mut (*cond).waiters);
+    }
+}
+
+/* Atomically releases LOCK and waits for COND to be signaled by
+some other piece of code.  After COND is signaled, LOCK is
+reacquired before returning.  LOCK must be held before calling
+this function.
+
+The monitor implemented by this function is "Mesa" style, not
+"Hoare" style, that is, sending and receiving a signal are not
+an atomic operation.  Thus, typically the caller must recheck
+the condition after the wait completes and, if necessary, wait
+again.
+
+A given condition variable is associated with only a single
+lock, but one lock may be associated with any number of
+condition variables.  That is, there is a one-to-many mapping
+from locks to condition variables.
+
+This function may sleep, so it must not be called within an
+interrupt handler.  This function may be called with
+interrupts disabled, but interrupts will be turned back on if
+we need to sleep. */
+pub unsafe fn cond_wait(cond: *mut Condition, lock: *mut Lock) {
+    unsafe {
+        /* One semaphore in a list, on our stack: it lives until we
+        are signaled (we sleep inside sema_down below). */
+        let mut waiter: SemaphoreElem = core::mem::zeroed();
+
+        crate::ASSERT!(cond != core::ptr::null_mut());
+        crate::ASSERT!(lock != core::ptr::null_mut());
+        crate::ASSERT!(!intr_context());
+        crate::ASSERT!(lock_held_by_current_thread(lock));
+
+        sema_init(&raw mut waiter.semaphore, 0);
+        list_push_back(&raw mut (*cond).waiters, &raw mut waiter.elem);
+        lock_release(lock);
+        sema_down(&raw mut waiter.semaphore);
+        lock_acquire(lock);
+    }
+}
+
+/* List "less" function for condition-variable waiters: orders two
+`SemaphoreElem`s by the priority of the single thread blocked on
+each one's semaphore (so `list_max` with this comparator finds
+the highest-priority waiter).  A waiter whose semaphore has no
+blocked thread yet — the small window in cond_wait between
+inserting the element and sleeping on it — counts as lowest
+priority. */
+unsafe fn sema_waiter_priority_less(a: *const ListElem, b: *const ListElem, _aux: *mut ()) -> bool {
+    unsafe {
+        let sa = list_entry::<SemaphoreElem>(
+            a as *mut ListElem,
+            core::mem::offset_of!(SemaphoreElem, elem),
+        );
+        let sb = list_entry::<SemaphoreElem>(
+            b as *mut ListElem,
+            core::mem::offset_of!(SemaphoreElem, elem),
+        );
+
+        let wa = list_empty(&raw const (*sa).semaphore.waiters);
+        let wb = list_empty(&raw const (*sb).semaphore.waiters);
+        if wa {
+            return false; /* No blocked thread: lowest priority. */
+        }
+        if wb {
+            return true;
+        }
+
+        /* Each waiter semaphore has exactly one blocked thread on
+        it.  thread_cmp_priority(x, y) is true when x's priority is
+        higher than y's, i.e. "x sorts before y". */
+        let ta = list_front(&raw const (*sa).semaphore.waiters);
+        let tb = list_front(&raw const (*sb).semaphore.waiters);
+        thread_cmp_priority(ta, tb, core::ptr::null_mut())
+    }
+}
+
+/* If any threads are waiting on COND (protected by LOCK), then
+this function signals one of them to wake up from its wait.
+LOCK must be held before calling this function.
+
+An interrupt handler cannot acquire a lock, so it does not
+make sense to try to signal a condition variable within an
+interrupt handler. */
+pub unsafe fn cond_signal(cond: *mut Condition, lock: *mut Lock) {
+    unsafe {
+        crate::ASSERT!(cond != core::ptr::null_mut());
+        crate::ASSERT!(lock != core::ptr::null_mut());
+        crate::ASSERT!(!intr_context());
+        crate::ASSERT!(lock_held_by_current_thread(lock));
+
+        if !list_empty(&raw const (*cond).waiters) {
+            /* Signal the waiter whose blocked thread has the
+            highest priority. */
+            let max = list_max(
+                &raw const (*cond).waiters,
+                sema_waiter_priority_less,
+                core::ptr::null_mut(),
+            );
+            list_remove(max);
+            let waiter =
+                list_entry::<SemaphoreElem>(max, core::mem::offset_of!(SemaphoreElem, elem));
+            sema_up(&raw mut (*waiter).semaphore);
+        }
+    }
+}
+
+/* Wakes up all threads, if any, waiting on COND (protected by
+LOCK).  LOCK must be held before calling this function.
+
+An interrupt handler cannot acquire a lock, so it does not
+make sense to try to signal a condition variable within an
+interrupt handler. */
+pub unsafe fn cond_broadcast(cond: *mut Condition, lock: *mut Lock) {
+    unsafe {
+        crate::ASSERT!(cond != core::ptr::null_mut());
+        crate::ASSERT!(lock != core::ptr::null_mut());
+
+        while !list_empty(&raw const (*cond).waiters) {
+            cond_signal(cond, lock);
+        }
+    }
+}
