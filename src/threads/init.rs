@@ -5,14 +5,20 @@
 //! devices, ...) is added as each milestone lands; `Boot complete.`
 //! and the action runner already behave like the C kernel.
 
-use crate::lib::kernel::console::vprintf;
-use crate::lib::random::random_init;
-use crate::lib::stdio::Arg;
-use crate::lib::stdlib::atoi;
-use crate::lib::string::{memset, strchr, strcmp, strnlen, strtok_r};
-use crate::threads::interrupt::intr_disable;
-use crate::threads::loader::{LOADER_ARGS_LEN, ptov_arg_cnt, ptov_args};
-use crate::threads::vaddr::ptov;
+use crate::{
+    threads::{
+        interrupt::intr_disable,
+        loader::{LOADER_ARGS_LEN, ptov_arg_cnt, ptov_args},
+        vaddr::ptov,
+    },
+    {
+        lib::kernel::console::vprintf,
+        random::random_init,
+        stdio::Arg,
+        stdlib::atoi,
+        string::{memset, strchr, strcmp, strnlen, strtok_r},
+    },
+};
 
 /* -q: Power off after kernel tasks complete? */
 pub static mut POWER_OFF_WHEN_DONE: bool = false;

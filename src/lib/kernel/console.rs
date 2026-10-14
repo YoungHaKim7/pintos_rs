@@ -5,10 +5,11 @@
 //! (`use_console_lock` stays false, matching C's early-boot behavior
 //! before `console_init`); lock discipline arrives with synch.c.
 
-use crate::devices::serial::serial_putc;
-use crate::devices::vga::vga_putc;
-use crate::lib::stdio::{self, Arg};
-use crate::threads::interrupt::intr_context;
+use crate::{
+    devices::{serial::serial_putc, vga::vga_putc},
+    lib::stdio::{self, Arg},
+    threads::interrupt::intr_context,
+};
 
 /* True in ordinary circumstances: we want to use the console
 lock to avoid mixing output between threads.  False in early

@@ -26,11 +26,13 @@
 //! - The iterator stores the current bucket as an index into
 //!   `hash.buckets` rather than a `struct list *`.
 
-use crate::lib::kernel::list::{
-    List, ListElem, list_begin, list_empty, list_end, list_head, list_init, list_next,
-    list_pop_front, list_push_front, list_remove,
+use crate::{
+    lib::kernel::list::{
+        List, ListElem, list_begin, list_empty, list_end, list_head, list_init, list_next,
+        list_pop_front, list_push_front, list_remove,
+    },
+    threads::malloc::{free, malloc},
 };
-use crate::threads::malloc::{free, malloc};
 
 /* Hash element. */
 #[repr(C)]

@@ -1,16 +1,20 @@
 //! Port of `threads/malloc.c` — a simple malloc() with segregated
 //! power-of-2 free lists.
 
-use crate::lib::kernel::list::{
-    List, ListElem, list_empty, list_init, list_pop_front, list_push_back, list_push_front,
-    list_remove,
+use crate::{
+    lib::{
+        kernel::list::{
+            List, ListElem, list_empty, list_init, list_pop_front, list_push_back, list_push_front,
+            list_remove,
+        },
+        string::{memcpy, memset},
+    },
+    threads::{
+        palloc::{palloc_free_multiple, palloc_free_page, palloc_get_multiple, palloc_get_page},
+        synch::{Lock, lock_acquire, lock_init, lock_release},
+        vaddr::{PGSIZE, pg_ofs, pg_round_down},
+    },
 };
-use crate::lib::string::{memcpy, memset};
-use crate::threads::palloc::{
-    palloc_free_multiple, palloc_free_page, palloc_get_multiple, palloc_get_page,
-};
-use crate::threads::synch::{Lock, lock_acquire, lock_init, lock_release};
-use crate::threads::vaddr::{PGSIZE, pg_ofs, pg_round_down};
 
 /* Descriptor. */
 #[repr(C)]

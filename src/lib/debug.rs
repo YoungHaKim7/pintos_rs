@@ -1,10 +1,12 @@
 //! Port of `lib/kernel/debug.c` — kernel panic machinery.
 
-use crate::lib::kernel::console::{console_panic, vprintf};
-use crate::lib::stdio::Arg;
-use crate::threads::init::power_off;
-use crate::threads::init::power_off_when_done;
-use crate::threads::interrupt::intr_disable;
+use crate::{
+    lib::{
+        kernel::console::{console_panic, vprintf},
+        stdio::Arg,
+    },
+    threads::{init::power_off, init::power_off_when_done, interrupt::intr_disable},
+};
 
 /* Recursion level (0 = first panic). */
 static mut LEVEL: i32 = 0;

@@ -3,17 +3,23 @@
 //! Organizer: hands out memory in page-size (and page-multiple) runs
 //! from two pools, one for kernel pages and one for user pages.
 
-use crate::PANIC;
-use crate::lib::kernel::bitmap::{
-    BITMAP_ERROR, bitmap_all, bitmap_create_in_buf, bitmap_scan_and_flip, bitmap_set_all,
-    bitmap_set_multiple, bitmap_size,
+use crate::{
+    PANIC,
+    lib::{
+        kernel::bitmap::{
+            BITMAP_ERROR, bitmap_all, bitmap_create_in_buf, bitmap_scan_and_flip, bitmap_set_all,
+            bitmap_set_multiple, bitmap_size,
+        },
+        kernel::list,
+        lib::string::memset,
+    },
+    printf,
+    threads::{
+        loader::MULTIBOOT_INFO,
+        synch::{Lock, lock_acquire, lock_init, lock_release},
+        vaddr::{PGSIZE, pg_no, pg_ofs, pg_round_up, ptov},
+    },
 };
-use crate::lib::kernel::list;
-use crate::lib::string::memset;
-use crate::printf;
-use crate::threads::loader::MULTIBOOT_INFO;
-use crate::threads::synch::{Lock, lock_acquire, lock_init, lock_release};
-use crate::threads::vaddr::{PGSIZE, pg_no, pg_ofs, pg_round_up, ptov};
 
 /* Page allocator flags. */
 pub type PallocFlags = u16;

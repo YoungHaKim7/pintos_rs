@@ -9,9 +9,11 @@
 //     `-DKERNEL_LOAD_PAGES=<kernel.bin/4096>`; the justfile handles it.)
 //  3. Emit link args: the linker script and section-discarding flags.
 
-use std::env;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn run(cmd: &mut Command) {
     println!("cargo:rerun-if-changed=build.rs");

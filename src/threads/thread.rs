@@ -6,22 +6,26 @@
 
 use core::arch::global_asm;
 
-use crate::lib::kernel::list::{
-    List, ListElem, list_empty, list_entry, list_init, list_insert_ordered, list_pop_front,
-    list_push_back, list_remove,
+use crate::{
+    lib::{
+        kernel::list::{
+            List, ListElem, list_empty, list_entry, list_init, list_insert_ordered, list_pop_front,
+            list_push_back, list_remove,
+        },
+        string::{memset, strlcpy},
+    },
+    printf,
+    threads::{
+        interrupt::{
+            IntrFrame, IntrLevel, intr_context, intr_disable, intr_enable, intr_get_level,
+            intr_yield_on_return,
+        },
+        loader::{SEL_KCSEG, SEL_KDSEG},
+        palloc::{PAL_ZERO, palloc_free_page, palloc_get_page},
+        synch::{Lock, Semaphore, lock_acquire, lock_init, lock_release, sema_down, sema_init},
+        vaddr::{PGSIZE, pg_round_down},
+    },
 };
-use crate::lib::string::{memset, strlcpy};
-use crate::printf;
-use crate::threads::interrupt::{
-    IntrFrame, IntrLevel, intr_context, intr_disable, intr_enable, intr_get_level,
-    intr_yield_on_return,
-};
-use crate::threads::loader::{SEL_KCSEG, SEL_KDSEG};
-use crate::threads::palloc::{PAL_ZERO, palloc_free_page, palloc_get_page};
-use crate::threads::synch::{
-    Lock, Semaphore, lock_acquire, lock_init, lock_release, sema_down, sema_init,
-};
-use crate::threads::vaddr::{PGSIZE, pg_round_down};
 
 /* Random value for struct thread's `magic' member.
 Used to detect stack overflow.  See the big comment at the top

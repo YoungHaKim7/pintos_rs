@@ -1,9 +1,11 @@
 //! Port of `devices/kbd.c` — PS/2 keyboard driver.
 
-use crate::intrinsic::inb;
-use crate::lib::string::strlen;
-use crate::printf;
-use crate::threads::interrupt::{IntrFrame, intr_register_ext};
+use crate::{
+    intrinsic::inb,
+    lib::string::strlen,
+    printf,
+    threads::interrupt::{IntrFrame, intr_register_ext},
+};
 
 /* Keyboard data register port. */
 const DATA_REG: u16 = 0x60;

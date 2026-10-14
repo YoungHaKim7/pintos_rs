@@ -2,15 +2,19 @@
 //! tables: the page map level 4 (pml4) hierarchy, page-table walks,
 //! and per-PTE state (dirty/accessed bits, present-bit clearing).
 
-use crate::intrinsic::{invlpg, lcr3, rcr3};
-use crate::lib::string::memcpy;
-use crate::threads::init::BASE_PML4;
-use crate::threads::palloc::{PAL_ZERO, palloc_free_page, palloc_get_page};
-use crate::threads::pte::{
-    PDPESHIFT, PDXSHIFT, PML4SHIFT, PTE_A, PTE_D, PTE_P, PTE_U, PTE_W, PTXSHIFT, pdx, pml4,
-    pte_addr, ptx,
+use crate::{
+    intrinsic::{invlpg, lcr3, rcr3},
+    lib::string::memcpy,
+    threads::{
+        init::BASE_PML4,
+        palloc::{PAL_ZERO, palloc_free_page, palloc_get_page},
+        pte::{
+            PDPESHIFT, PDXSHIFT, PML4SHIFT, PTE_A, PTE_D, PTE_P, PTE_U, PTE_W, PTXSHIFT, pdx, pml4,
+            pte_addr, ptx,
+        },
+        vaddr::{PGSIZE, is_user_vaddr, pg_ofs, pg_round_down, ptov, vtop},
+    },
 };
-use crate::threads::vaddr::{PGSIZE, is_user_vaddr, pg_ofs, pg_round_down, ptov, vtop};
 
 /* Number of entries in one page-table page: PGSIZE / sizeof(uint64_t*). */
 const PGENT_CNT: u64 = PGSIZE / 8;

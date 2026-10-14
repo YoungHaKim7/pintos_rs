@@ -5,8 +5,10 @@
 //! stub).  The full loader/argument-passing/exec machinery is the
 //! userprog milestone.
 
-use crate::threads::thread::Thread;
-use crate::threads::{init, mmu, vaddr};
+use crate::threads::{
+    thread::Thread,
+    {init, mmu, vaddr},
+};
 
 /* Activates the new thread's page tables: if the thread has its
 own pml4 (a user process), switch to it; otherwise fall back to

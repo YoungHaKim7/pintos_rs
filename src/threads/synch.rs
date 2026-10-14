@@ -8,14 +8,18 @@
 //! `thread::thread_donate_priority()`; `cond_signal` wakes the waiter
 //! whose blocked thread has the highest priority.
 
-use crate::lib::kernel::list::{
-    List, ListElem, list_empty, list_entry, list_front, list_init, list_insert_ordered, list_max,
-    list_pop_front, list_push_back, list_remove,
-};
-use crate::threads::interrupt::{intr_context, intr_disable, intr_set_level};
-use crate::threads::thread::{
-    Thread, thread_block, thread_cmp_priority, thread_current, thread_donate_priority,
-    thread_unblock, thread_yield,
+use crate::{
+    lib::kernel::list::{
+        List, ListElem, list_empty, list_entry, list_front, list_init, list_insert_ordered,
+        list_max, list_pop_front, list_push_back, list_remove,
+    },
+    threads::{
+        interrupt::{intr_context, intr_disable, intr_set_level},
+        thread::{
+            Thread, thread_block, thread_cmp_priority, thread_current, thread_donate_priority,
+            thread_unblock, thread_yield,
+        },
+    },
 };
 
 /* A counting semaphore. */

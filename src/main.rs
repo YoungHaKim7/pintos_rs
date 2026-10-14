@@ -21,8 +21,10 @@ mod vm;
 
 use core::panic::PanicInfo;
 
-use lib::kernel::console::{console_panic, vprintf};
-use lib::stdio::Arg;
+use lib::{
+    kernel::console::{console_panic, vprintf},
+    stdio::Arg,
+};
 use threads::interrupt::intr_disable;
 
 /* printf-style output macros.

@@ -3,9 +3,11 @@
 //! Controllers, the Interrupt Descriptor Table, and dispatch of
 //! interrupts, faults, and exceptions to registered handlers.
 
-use crate::intrinsic::{DescPtr, cli, lidt, ltr, outb, rcr2, read_eflags, sti};
-use crate::lib::stdio::Arg;
-use crate::threads::loader::{SEL_KCSEG, SEL_TSS};
+use crate::{
+    intrinsic::{DescPtr, cli, lidt, ltr, outb, rcr2, read_eflags, sti},
+    lib::stdio::Arg,
+    threads::loader::{SEL_KCSEG, SEL_TSS},
+};
 
 /* Number of x86_64 interrupts. */
 const INTR_CNT: usize = 256;
