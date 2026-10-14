@@ -37,42 +37,12 @@ struct Pool {
 
 /* Two pools: one for kernel data, one for user pages. */
 static mut KERNEL_POOL: Pool = Pool {
-    lock: Lock {
-        holder: core::ptr::null_mut(),
-        semaphore: crate::threads::synch::Semaphore {
-            value: 0,
-            waiters: crate::lib::kernel::list::List {
-                head: crate::lib::kernel::list::ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-                tail: crate::lib::kernel::list::ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-            },
-        },
-    },
+    lock: Lock::EMPTY,
     used_map: core::ptr::null_mut(),
     base: core::ptr::null_mut(),
 };
 static mut USER_POOL: Pool = Pool {
-    lock: Lock {
-        holder: core::ptr::null_mut(),
-        semaphore: crate::threads::synch::Semaphore {
-            value: 0,
-            waiters: crate::lib::kernel::list::List {
-                head: crate::lib::kernel::list::ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-                tail: crate::lib::kernel::list::ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-            },
-        },
-    },
+    lock: Lock::EMPTY,
     used_map: core::ptr::null_mut(),
     base: core::ptr::null_mut(),
 };
@@ -193,10 +163,12 @@ unsafe fn resolve_area_info(base_mem: &mut Area, ext_mem: &mut Area) {
  */
 unsafe fn populate_pools(base_mem: &Area, ext_mem: &Area) {
     unsafe {
-        extern "C" {
+        unsafe extern "C" {
             static _end: u8;
         }
-        let mut free_start = pg_round_up(ptov(core::ptr::addr_of!(_end) as u64));
+        /* NB: `_end` is a linker symbol, so its address is already a
+        kernel VMA — no ptov() here (C: `pg_round_up(&_end)`). */
+        let mut free_start = pg_round_up(core::ptr::addr_of!(_end) as u64);
 
         let total_pages = (base_mem.size + ext_mem.size) / PGSIZE;
         let half = total_pages / 2;

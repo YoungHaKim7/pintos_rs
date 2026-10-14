@@ -635,3 +635,17 @@ pub unsafe fn list_min(l: *const List, less: ListLessFunc, aux: *mut ()) -> *mut
         min
     }
 }
+
+impl List {
+    /// All-zero list (call `list_init` before use).
+    pub const EMPTY: List = List {
+        head: ListElem {
+            prev: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+        },
+        tail: ListElem {
+            prev: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+        },
+    };
+}

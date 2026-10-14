@@ -186,7 +186,7 @@ pub fn disk_init() {
             }
 
             /* Register interrupt handler. */
-            intr_register_ext((*c).irq as i32, interrupt_handler, (*c).name.as_ptr());
+            intr_register_ext((*c).irq, interrupt_handler, (*c).name.as_ptr());
 
             /* Reset hardware. */
             reset_channel(c);

@@ -36,3 +36,9 @@ cs             0x8                 8
 
 ∴ The GDB session worked: at 0x200000, the code bytes as decoded by GDB in 16-bit-ish interpretation look off (GDB decodes as 16-bit real-mode at start — that's fine, the actual CPU is in 32-bit after loader's far jump... wait, the loader jumps to the kernel in 32-bit protected mode with CS=0x8? QEMU dump earlier showed CS=0008 CS32 at the fault. But here at 0x200000 GDB shows add $0x0,%al — first bytes are 00 00... The first instruction bytes at kernel offset 0 should be bootstrap's start: start.S begins .section .entry, "ax"\n.code32\nbootstrap:\n cli; cld...? Let me check start.S first bytes.
 ```
+
+- test2
+
+```bash
+$ timeout 8 qemu-system-x86_64 -nographic -drive file=os.dsk,format=raw,index=0,media=disk -d int,guest_errors -D /tmp/q8.log -no-reboot -serial none < /dev/null > /dev/null 2>&1; grep -m1 -A10 "v=" /tmp/q8.log | head -14; grep -m1 "IP=" /tmp/q8.log | grep -oE "IP=[0-9a-f:]+"
+```

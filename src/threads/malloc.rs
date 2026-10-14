@@ -43,35 +43,13 @@ struct Block {
 }
 
 /* Our set of descriptors. */
-static mut DESCS: [Desc; 10] = [Desc {
-    block_size: 0,
-    blocks_per_arena: 0,
-    free_list: List {
-        head: ListElem {
-            prev: core::ptr::null_mut(),
-            next: core::ptr::null_mut(),
-        },
-        tail: ListElem {
-            prev: core::ptr::null_mut(),
-            next: core::ptr::null_mut(),
-        },
-    },
-    lock: Lock {
-        holder: core::ptr::null_mut(),
-        semaphore: crate::threads::synch::Semaphore {
-            value: 0,
-            waiters: List {
-                head: ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-                tail: ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-            },
-        },
-    },
+static mut DESCS: [Desc; 10] = [const {
+    Desc {
+        block_size: 0,
+        blocks_per_arena: 0,
+        free_list: List::EMPTY,
+        lock: Lock::EMPTY,
+    }
 }; 10];
 static mut DESC_CNT: usize = 0; /* Number of descriptors. */
 

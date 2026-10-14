@@ -427,3 +427,23 @@ pub unsafe fn cond_broadcast(cond: *mut Condition, lock: *mut Lock) {
         }
     }
 }
+
+impl Semaphore {
+    /// All-zero semaphore (call `sema_init` before use).
+    pub const EMPTY: Semaphore = Semaphore {
+        value: 0,
+        waiters: List::EMPTY,
+    };
+}
+
+impl Lock {
+    /// All-zero lock (call `lock_init` before use).
+    pub const EMPTY: Lock = Lock {
+        holder: core::ptr::null_mut(),
+        semaphore: Semaphore::EMPTY,
+        elem: ListElem {
+            prev: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+        },
+    };
+}

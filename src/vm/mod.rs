@@ -16,9 +16,24 @@ pub struct SupplementalPageTable {
     pub table: Hash,
 }
 
-impl SupplementalPageTable {
-    pub const fn empty() -> Self {
-        // Hash contains raw pointers; written before threads run.
-        Self { table: Hash::EMPTY }
-    }
+/* The SPT is embedded in `struct Thread`, which is zeroed at
+init; `hash_init` is called when a thread gains a user address
+space (userprog/process.rs). */
+
+/// Fault-handling hook called from `userprog::exception::page_fault`.
+/// M1 stub: nothing is mapped lazily yet, so every fault falls
+/// through to the classic kill path.  The project-3 milestone
+/// implements spt lookup, claiming, COW and stack growth here.
+pub unsafe fn vm_try_handle_fault(
+    f: *mut crate::threads::interrupt::IntrFrame,
+    addr: u64,
+    user: bool,
+    write: bool,
+    not_present: bool,
+) -> bool {
+    let _ = (f, addr, user, write, not_present);
+    false
 }
+
+/// Initializes the VM subsystem.  M1 stub.
+pub unsafe fn vm_init() {}

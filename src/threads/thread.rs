@@ -116,22 +116,7 @@ static mut IDLE_THREAD: *mut Thread = core::ptr::null_mut();
 static mut INITIAL_THREAD: *mut Thread = core::ptr::null_mut();
 
 /* Lock used by allocate_tid(). */
-static mut TID_LOCK: Lock = Lock {
-    holder: core::ptr::null_mut(),
-    semaphore: Semaphore {
-        value: 0,
-        waiters: List {
-            head: ListElem {
-                prev: core::ptr::null_mut(),
-                next: core::ptr::null_mut(),
-            },
-            tail: ListElem {
-                prev: core::ptr::null_mut(),
-                next: core::ptr::null_mut(),
-            },
-        },
-    },
-};
+static mut TID_LOCK: Lock = Lock::EMPTY;
 
 /* Thread destruction requests. */
 static mut DESTRUCTION_REQ: List = List {
@@ -229,19 +214,7 @@ Also creates the idle thread. */
 pub unsafe fn thread_start() {
     unsafe {
         /* Create the idle thread. */
-        let mut idle_started = Semaphore {
-            value: 0,
-            waiters: List {
-                head: ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-                tail: ListElem {
-                    prev: core::ptr::null_mut(),
-                    next: core::ptr::null_mut(),
-                },
-            },
-        };
+        let mut idle_started = Semaphore::EMPTY;
         sema_init(&raw mut idle_started, 0);
         thread_create(
             b"idle\0".as_ptr(),
@@ -281,7 +254,7 @@ pub unsafe fn thread_tick() {
             /* Once per second: recalculate load_avg and every
             thread's recent_cpu. */
             let ticks = crate::devices::timer::timer_ticks();
-            if ticks > 0 && (ticks as u64) % TIMER_FREQ == 0 {
+            if ticks > 0 && (ticks as u64) % crate::devices::timer::TIMER_FREQ as u64 == 0 {
                 mlfqs_update_load_avg();
                 mlfqs_foreach_update_recent_cpu();
             }
@@ -339,12 +312,12 @@ pub unsafe fn thread_create(
         /* Call the kernel_thread if it is scheduled.
         Note) rdi is 1st argument, and rsi is 2nd argument. */
         (*t).tf.rip = kernel_thread as usize as u64;
-        (*t).tf.r.rdi = function.map(|f| f as usize).unwrap_or(0) as u64;
-        (*t).tf.r.rsi = aux as u64;
-        (*t).tf.ds = SEL_KDSEG as u64;
-        (*t).tf.es = SEL_KDSEG as u64;
-        (*t).tf.ss = SEL_KDSEG as u64;
-        (*t).tf.cs = SEL_KCSEG as u64;
+        (*t).tf.R.rdi = function.map(|f| f as usize).unwrap_or(0) as u64;
+        (*t).tf.R.rsi = aux as u64;
+        (*t).tf.ds = SEL_KDSEG;
+        (*t).tf.es = SEL_KDSEG;
+        (*t).tf.ss = SEL_KDSEG;
+        (*t).tf.cs = SEL_KCSEG;
         (*t).tf.eflags = FLAG_IF;
 
         /* Add to run queue. */

@@ -23,7 +23,8 @@ pub unsafe fn memchr(buffer: *const u8, c: u8, size: usize) -> *mut u8 {
 
 /* Copies SIZE bytes from SRC to DST, which must not overlap.
 Returns DST. */
-pub unsafe fn memcpy(dst_: *mut u8, src_: *const u8, size: usize) -> *mut u8 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn memcpy(dst_: *mut u8, src_: *const u8, size: usize) -> *mut u8 {
     unsafe {
         // Rust codegen may lower struct copies to compiler_builtins'
         // memcpy, not this one, so a straightforward byte loop is safe.
@@ -93,7 +94,8 @@ pub unsafe extern "C" fn memcmp(a_: *const u8, b_: *const u8, size: usize) -> i3
 }
 
 /* Sets the SIZE bytes starting at P to C.  Returns P. */
-pub unsafe fn memset(p_: *mut u8, c: u8, size: usize) -> *mut u8 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn memset(p_: *mut u8, c: u8, size: usize) -> *mut u8 {
     unsafe {
         let mut p = p_;
         let mut n = size;

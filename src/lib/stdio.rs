@@ -680,3 +680,9 @@ pub unsafe fn hex_dump(mut ofs: usize, mut buf: *const u8, mut size: usize, asci
         }
     }
 }
+
+impl From<*const u8> for Arg<'_> {
+    fn from(v: *const u8) -> Self {
+        Arg::Raw(v)
+    }
+}
