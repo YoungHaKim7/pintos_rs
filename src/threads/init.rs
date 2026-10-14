@@ -6,17 +6,17 @@
 //! and the action runner already behave like the C kernel.
 
 use crate::{
-    threads::{
-        interrupt::intr_disable,
-        loader::{LOADER_ARGS_LEN, ptov_arg_cnt, ptov_args},
-        vaddr::ptov,
-    },
-    {
-        lib::kernel::console::vprintf,
+    lib::{
+        kernel::console::vprintf,
         random::random_init,
         stdio::Arg,
         stdlib::atoi,
         string::{memset, strchr, strcmp, strnlen, strtok_r},
+    },
+    threads::{
+        interrupt::intr_disable,
+        loader::{LOADER_ARGS_LEN, ptov_arg_cnt, ptov_args},
+        vaddr::ptov,
     },
 };
 

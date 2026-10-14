@@ -11,7 +11,7 @@ use crate::{
             bitmap_set_multiple, bitmap_size,
         },
         kernel::list,
-        lib::string::memset,
+        string::memset,
     },
     printf,
     threads::{
