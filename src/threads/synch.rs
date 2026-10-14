@@ -30,7 +30,18 @@ pub struct Semaphore {
 pub struct Lock {
     pub holder: *mut Thread,  /* Thread holding lock (for debugging). */
     pub semaphore: Semaphore, /* Binary semaphore controlling access. */
+    /// Link in the holder's `acquired_locks` list (priority
+    /// donation bookkeeping; managed by lock_acquire/release).
+    pub elem: ListElem,
 }
+
+impl Lock {
+    /// Offset of `elem` within Lock (for list_entry on the holder's
+    /// acquired-locks list).
+    pub const ELEM_OFFSET: usize = core::mem::offset_of!(Lock, elem);
+}
+/// C-compat alias used by thread.rs.
+pub const LOCK_ELEM_OFFSET: usize = Lock::ELEM_OFFSET;
 
 /* Condition variable. */
 #[repr(C)]
@@ -96,6 +107,11 @@ pub unsafe fn sema_down(sema: *mut Semaphore) {
         let old_level = intr_disable();
         while (*sema).value == 0 {
             sema_push_waiter_ordered(sema, thread_current());
+            /* We are now visible on the waiters list: if this
+            semaphore belongs to a lock held by another thread,
+            propagate priority donation up the holder chain before
+            going to sleep. */
+            thread_donate_priority();
             thread_block();
         }
         (*sema).value -= 1;
@@ -181,6 +197,8 @@ pub unsafe fn lock_init(lock: *mut Lock) {
         crate::ASSERT!(lock != core::ptr::null_mut());
 
         (*lock).holder = core::ptr::null_mut();
+        (*lock).elem.prev = core::ptr::null_mut();
+        (*lock).elem.next = core::ptr::null_mut();
         sema_init(&raw mut (*lock).semaphore, 1);
     }
 }
@@ -201,15 +219,22 @@ pub unsafe fn lock_acquire(lock: *mut Lock) {
 
         if !(*lock).holder.is_null() {
             /* The lock is held by another thread: we are about to
-            join its waiters and sleep.  Trigger priority donation
-            so the holder (and, transitively, anyone the holder is
-            waiting on) runs at our priority until we get the lock
-            back.  The donation bookkeeping itself lives in
-            thread.rs; it reads this lock's ordered waiter list. */
+            join its waiters and sleep.  Record the lock we are
+            waiting on and trigger priority donation so the holder
+            (and, transitively, anyone the holder is waiting on)
+            runs at our priority until we get the lock back. */
+            (*thread_current()).waiting_lock = lock;
             thread_donate_priority();
         }
         sema_down(&raw mut (*lock).semaphore);
+        (*thread_current()).waiting_lock = core::ptr::null_mut();
         (*lock).holder = thread_current();
+        /* We hold it now: it joins our acquired list for future
+        donation refreshes. */
+        list_push_back(
+            &raw mut (*thread_current()).acquired_locks,
+            &raw mut (*lock).elem,
+        );
     }
 }
 
@@ -244,6 +269,8 @@ pub unsafe fn lock_release(lock: *mut Lock) {
         crate::ASSERT!(lock_held_by_current_thread(lock));
 
         (*lock).holder = core::ptr::null_mut();
+        /* No longer on our acquired list. */
+        list_remove(&raw mut (*lock).elem);
         sema_up(&raw mut (*lock).semaphore);
 
         /* The highest-priority waiter no longer donates to us, so
