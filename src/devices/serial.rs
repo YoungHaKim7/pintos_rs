@@ -56,6 +56,13 @@ enum Mode {
 
 static mut MODE: Mode = Mode::Uninit;
 
+/* Data to be transmitted. */
+static mut TXQ: crate::devices::intq::Intq = crate::devices::intq::Intq::EMPTY;
+
+use crate::devices::input::{input_full, input_putc};
+use crate::devices::intq::{intq_empty, intq_full, intq_getc, intq_putc};
+use crate::threads::interrupt::intr_register_ext;
+
 /* Initializes the serial port device for polling mode.
 Polling mode busy-waits for the serial port to become free
 before writing to it.  It's slow, but until interrupts have
@@ -67,14 +74,27 @@ unsafe fn init_poll() {
         outb(FCR_REG, 0); /* Disable FIFO. */
         set_serial(115200); /* 115.2 kbps, N-8-1. */
         outb(MCR_REG, MCR_OUT2); /* Required to enable interrupts. */
+        intq_init(&raw mut TXQ);
         MODE = Mode::Poll;
     }
 }
 
 /* Initializes the serial port device for queued interrupt-driven
-I/O.  (M1: registers the IRQ4 handler and switches to QUEUE.) */
+I/O.  With interrupt-driven I/O we don't waste CPU time waiting
+for the serial device to become ready. */
 pub fn serial_init_queue() {
-    todo!("serial_init_queue: requires intr_register_ext + intq (M1)")
+    unsafe {
+        if MODE == Mode::Uninit {
+            init_poll();
+        }
+        debug_assert!(MODE == Mode::Poll);
+
+        intr_register_ext(0x20 + 4, serial_interrupt, b"serial\0".as_ptr());
+        MODE = Mode::Queue;
+        let old_level = intr_disable();
+        write_ier();
+        intr_set_level(old_level);
+    }
 }
 
 /* Sends BYTE to the serial port. */
@@ -91,9 +111,18 @@ pub fn serial_putc(byte: u8) {
             }
             putc_poll(byte);
         } else {
-            /* Queue a byte and update the interrupt enable register. */
-            // M1: intq-based transmit path.
-            putc_poll(byte);
+            /* Otherwise, queue a byte and update the interrupt
+            enable register. */
+            if old_level == IntrLevel::Off && intq_full(&raw const TXQ) {
+                /* Interrupts are off and the transmit queue is
+                full.  If we wanted to wait for the queue to empty,
+                we'd have to re-enable interrupts.  That's impolite,
+                so we'll send a character via polling instead. */
+                putc_poll(intq_getc(&raw mut TXQ));
+            }
+
+            intq_putc(&raw mut TXQ, byte);
+            write_ier();
         }
     }
 
@@ -104,15 +133,25 @@ pub fn serial_putc(byte: u8) {
 mode. */
 pub fn serial_flush() {
     let old_level = intr_disable();
-    // M1: drain txq via polling; nothing queued in polling mode.
+    unsafe {
+        while !intq_empty(&raw const TXQ) {
+            putc_poll(intq_getc(&raw mut TXQ));
+        }
+    }
     intr_set_level(old_level);
 }
 
 /* The fullness of the input buffer may have changed.  Reassess
-whether we should block receive interrupts. */
+whether we should block receive interrupts.
+Called by the input buffer routines when characters are added
+to or removed from the buffer. */
 pub fn serial_notify() {
-    debug_assert!(intr_get_level() == IntrLevel::Off);
-    /* M1: write_ier() when in QUEUE mode. */
+    unsafe {
+        debug_assert!(intr_get_level() == IntrLevel::Off);
+        if MODE == Mode::Queue {
+            write_ier();
+        }
+    }
 }
 
 /* Configures the serial port for BPS bits per second. */
@@ -144,8 +183,50 @@ unsafe fn putc_poll(byte: u8) {
     }
 }
 
-/* Silence unused-constant warnings for registers used only in M1. */
-#[allow(dead_code)]
-fn _unused() {
-    let _ = (RBR_REG, IER_REG, IIR_REG, IER_RECV, IER_XMIT, LSR_DR);
+/* Update interrupt enable register. */
+unsafe fn write_ier() {
+    unsafe {
+        let mut ier: u8 = 0;
+
+        debug_assert!(intr_get_level() == IntrLevel::Off);
+
+        /* Enable transmit interrupt if we have any characters to
+        transmit. */
+        if !intq_empty(&raw const TXQ) {
+            ier |= IER_XMIT;
+        }
+
+        /* Enable receive interrupt if we have room to store any
+        characters we receive. */
+        if !input_full() {
+            ier |= IER_RECV;
+        }
+
+        outb(IER_REG, ier);
+    }
+}
+
+/* Serial interrupt handler. */
+extern "C" fn serial_interrupt(_f: *mut crate::threads::interrupt::IntrFrame) {
+    unsafe {
+        /* Inquire about interrupt in UART.  Without this, we can
+        occasionally miss an interrupt running under QEMU. */
+        inb(IIR_REG);
+
+        /* As long as we have room to receive a byte, and the
+        hardware has a byte for us, receive a byte. */
+        while !input_full() && inb(LSR_REG) & LSR_DR != 0 {
+            input_putc(inb(RBR_REG));
+        }
+
+        /* As long as we have a byte to transmit, and the hardware
+        is ready to accept a byte for transmission, transmit a
+        byte. */
+        while !intq_empty(&raw const TXQ) && inb(LSR_REG) & LSR_THRE != 0 {
+            outb(THR_REG, intq_getc(&raw mut TXQ));
+        }
+
+        /* Update interrupt enable register based on queue status. */
+        write_ier();
+    }
 }

@@ -9,7 +9,9 @@ rust-version = "1.99.0"
 [profile.dev]
 panic = "abort"
 debug = 2
-opt-level = 0
+# opt-level 1: near--O0 debuggability but with stack frames small
+# enough for the C kernel's boot-stack budget (page 0, 4 kB).
+opt-level = 1
 lto = false
 
 [profile.release]

@@ -165,8 +165,9 @@ pub unsafe fn invlpg(addr: u64) {
 
 /* --------------------------- System registers -------------------------- */
 
-/// GDTR/IDTR pointer (`struct desc_ptr`).
-#[repr(C)]
+/// GDTR/IDTR pointer (`struct desc_ptr`): 10 bytes, packed —
+/// the base sits at offset 2, exactly as LGDT/LIDT read it.
+#[repr(C, packed)]
 pub struct DescPtr {
     pub size: u16,
     pub address: u64,

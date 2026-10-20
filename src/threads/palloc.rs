@@ -235,7 +235,9 @@ unsafe fn populate_pools(base_mem: &Area, ext_mem: &Area) {
                             state = State::UserStart;
                         } else {
                             region_start = start + rem * PGSIZE;
-                            rem = user_pages - size_in_pg + rem;
+                            /* C computes this in unsigned 64-bit with
+                            wrapping; match it exactly. */
+                            rem = user_pages.wrapping_sub(size_in_pg).wrapping_add(rem);
                             state = State::User;
                         }
                     }

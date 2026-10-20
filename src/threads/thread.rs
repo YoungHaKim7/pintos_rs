@@ -913,7 +913,11 @@ global_asm!(
     "    movw %ss, 32(%rax)",
     "    movq %rcx, %rdi",
     "    call __do_iret_asm",
+    /* When this thread is resumed later, its saved rip points here:
+    return to the (preserved) caller stack, exactly like the C
+    inline-asm version flowing into its function epilogue. */
     ".Lout_iret:",
+    "    ret",
     options(att_syntax)
 );
 

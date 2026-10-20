@@ -156,6 +156,13 @@ pub unsafe fn sema_up(sema: *mut Semaphore) {
         crate::ASSERT!(sema != core::ptr::null_mut());
 
         let old_level = intr_disable();
+
+        /* Increment the value BEFORE waking (and preempting): the
+        woken thread re-checks `value == 0` in its sema_down loop,
+        and a preemption triggered below must not observe the old
+        value or it would re-block with no one left to wake it. */
+        (*sema).value += 1;
+
         if !list_empty(&raw const (*sema).waiters) {
             /* The waiters are kept ordered by descending priority,
             so the front waiter is the highest-priority one. */
@@ -176,7 +183,6 @@ pub unsafe fn sema_up(sema: *mut Semaphore) {
                 thread_yield();
             }
         }
-        (*sema).value += 1;
         intr_set_level(old_level);
     }
 }
