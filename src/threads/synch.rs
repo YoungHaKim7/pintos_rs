@@ -53,6 +53,13 @@ pub struct Condition {
     pub waiters: List, /* List of waiting threads. */
 }
 
+impl Condition {
+    /// All-zero condition (call `cond_init` before use).
+    pub const EMPTY: Condition = Condition {
+        waiters: List::EMPTY,
+    };
+}
+
 /* One semaphore in a list. */
 #[repr(C)]
 struct SemaphoreElem {
@@ -78,23 +85,6 @@ pub unsafe fn sema_init(sema: *mut Semaphore, value: u32) {
     }
 }
 
-/* Inserts thread T into SEMA's waiter list, keeping the list
-ordered by descending thread priority (highest-priority waiter
-at the front).  This lets sema_up() wake the highest-priority
-waiter and gives the priority-donation code in thread.rs a
-directly readable view of a lock's waiters.  (The C original
-used a plain list_push_back here.) */
-pub(crate) unsafe fn sema_push_waiter_ordered(s: *mut Semaphore, t: *mut Thread) {
-    unsafe {
-        list_insert_ordered(
-            &raw mut (*s).waiters,
-            &raw mut (*t).elem,
-            thread_cmp_priority,
-            core::ptr::null_mut(),
-        );
-    }
-}
-
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
 to become positive and then atomically decrements it.
 
@@ -110,7 +100,7 @@ pub unsafe fn sema_down(sema: *mut Semaphore) {
 
         let old_level = intr_disable();
         while (*sema).value == 0 {
-            sema_push_waiter_ordered(sema, thread_current());
+            list_push_back(&raw mut (*sema).waiters, &raw mut (*thread_current()).elem);
             /* We are now visible on the waiters list: if this
             semaphore belongs to a lock held by another thread,
             propagate priority donation up the holder chain before
@@ -147,6 +137,13 @@ pub unsafe fn sema_try_down(sema: *mut Semaphore) -> bool {
     }
 }
 
+/* list_max "less" twin of thread_cmp_priority: true when A's
+thread has strictly LOWER priority than B's (so list_max
+selects the highest-priority waiter). */
+unsafe fn thread_less_priority(a: *const ListElem, b: *const ListElem, aux: *mut ()) -> bool {
+    unsafe { thread_cmp_priority(b, a, aux) }
+}
+
 /* Up or "V" operation on a semaphore.  Increments SEMA's value
 and wakes up one thread of those waiting for SEMA, if any.
 
@@ -164,12 +161,18 @@ pub unsafe fn sema_up(sema: *mut Semaphore) {
         (*sema).value += 1;
 
         if !list_empty(&raw const (*sema).waiters) {
-            /* The waiters are kept ordered by descending priority,
-            so the front waiter is the highest-priority one. */
-            let t = list_entry::<Thread>(
-                list_pop_front(&raw mut (*sema).waiters),
-                core::mem::offset_of!(Thread, elem),
+            /* Wake the highest-priority waiter.  Selecting with
+            list_max (rather than keeping the list sorted at
+            insert time) stays correct when a waiter's priority
+            changes while it sleeps, e.g. through donation. */
+            let max = list_max(
+                &raw const (*sema).waiters,
+                thread_less_priority,
+                core::ptr::null_mut(),
             );
+            list_remove(max);
+            let t =
+                list_entry::<Thread>(max, core::mem::offset_of!(Thread, elem));
             thread_unblock(t);
 
             /* If the woken thread has higher priority than the
@@ -285,8 +288,13 @@ pub unsafe fn lock_release(lock: *mut Lock) {
 
         /* The highest-priority waiter no longer donates to us, so
         our effective priority may have dropped: refresh it (the
-        donation refresh itself lives in thread.rs). */
-        thread_donate_priority();
+        donation refresh itself lives in thread.rs), and yield if
+        we dropped below a ready thread. */
+        let before = (*thread_current()).priority;
+        crate::threads::thread::refresh_priority(thread_current());
+        if (*thread_current()).priority < before {
+            thread_yield();
+        }
     }
 }
 
@@ -372,18 +380,21 @@ unsafe fn sema_waiter_priority_less(a: *const ListElem, b: *const ListElem, _aux
         let wa = list_empty(&raw const (*sa).semaphore.waiters);
         let wb = list_empty(&raw const (*sb).semaphore.waiters);
         if wa {
-            return false; /* No blocked thread: lowest priority. */
+            /* A has no blocked thread (lowest); it is less than B
+            unless B is also empty. */
+            return !wb;
         }
         if wb {
-            return true;
+            return false; /* B is the empty (lowest) one. */
         }
 
         /* Each waiter semaphore has exactly one blocked thread on
-        it.  thread_cmp_priority(x, y) is true when x's priority is
-        higher than y's, i.e. "x sorts before y". */
+        it.  thread_cmp_priority(x, y) is true when x's priority
+        is higher than y's, i.e. "x sorts before y"; less(a, b)
+        means a < b, so we ask whether b sorts before a. */
         let ta = list_front(&raw const (*sa).semaphore.waiters);
         let tb = list_front(&raw const (*sb).semaphore.waiters);
-        thread_cmp_priority(ta, tb, core::ptr::null_mut())
+        thread_cmp_priority(tb, ta, core::ptr::null_mut())
     }
 }
 

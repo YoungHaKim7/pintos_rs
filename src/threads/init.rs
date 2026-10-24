@@ -253,7 +253,7 @@ unsafe fn run_actions(mut argv: *mut *mut u8) {
             function: unsafe fn(*mut *mut u8),
         }
         static ACTIONS: &[Action] = &[Action {
-            name: b"run",
+            name: b"run\0",
             argc: 2,
             function: run_task,
         }];

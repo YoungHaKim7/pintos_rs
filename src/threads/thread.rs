@@ -485,39 +485,48 @@ pub unsafe fn thread_cmp_priority(a: *const ListElem, b: *const ListElem, _aux: 
     }
 }
 
-/* Refreshes the current thread's effective priority from its
-donations and, if it changed and the thread is itself blocked on
-a lock, propagates the change up the holder chain (nested
-donation).  The effective priority is the max of the original
-priority and the highest priority among the waiters of every
-lock this thread holds. */
+/* Refreshes the priorities along the chain of locks the current
+thread is blocked on: each lock holder's effective priority is
+recomputed from the waiters of every lock it holds (nested
+donation).  Callers: lock_acquire/sema_down when joining a
+waiters list. */
 pub unsafe fn thread_donate_priority() {
     unsafe {
         let mut t = thread_current();
+        let mut depth = 0;
         loop {
-            let donated = max_donated_priority(t);
-            let effective = if (*t).original_priority > donated {
-                (*t).original_priority
-            } else {
-                donated
-            };
-            if effective == (*t).priority {
-                break; /* Chain is already consistent. */
-            }
-            (*t).priority = effective;
-
-            /* Propagate: the lock we're waiting on has a holder
-            whose donations just changed. */
             let wl = (*t).waiting_lock;
             if wl.is_null() {
                 break;
             }
             let holder = (*wl).holder;
-            if holder.is_null() {
+            if holder.is_null() || holder == t {
                 break;
             }
+            refresh_priority(holder);
             t = holder;
+
+            /* Depth cap against cycles, as in the reference
+            solutions (donation depth above 8 is a bug). */
+            depth += 1;
+            if depth >= 8 {
+                break;
+            }
         }
+    }
+}
+
+/* Recomputes T's effective priority: the max of its original
+priority and the highest-priority waiter among all locks T
+holds. */
+pub(crate) unsafe fn refresh_priority(t: *mut Thread) {
+    unsafe {
+        let donated = max_donated_priority(t);
+        (*t).priority = if (*t).original_priority > donated {
+            (*t).original_priority
+        } else {
+            donated
+        };
     }
 }
 
