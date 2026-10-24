@@ -60,7 +60,7 @@ static mut MODE: Mode = Mode::Uninit;
 static mut TXQ: crate::devices::intq::Intq = crate::devices::intq::Intq::EMPTY;
 
 use crate::devices::input::{input_full, input_putc};
-use crate::devices::intq::{intq_empty, intq_full, intq_getc, intq_putc};
+use crate::devices::intq::{intq_empty, intq_full, intq_getc, intq_init, intq_putc};
 use crate::threads::interrupt::intr_register_ext;
 
 /* Initializes the serial port device for polling mode.

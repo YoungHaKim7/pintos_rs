@@ -8,20 +8,43 @@
 use crate::{
     devices::{serial::serial_putc, vga::vga_putc},
     lib::stdio::{self, Arg},
-    threads::interrupt::intr_context,
+    threads::{
+        interrupt::intr_context,
+        synch::{Lock, lock_acquire, lock_held_by_current_thread, lock_init, lock_release},
+    },
 };
 
+/* The console lock.
+Both the vga and serial layers do their own locking, so it's
+safe to call them at any time.
+But this lock is useful to prevent simultaneous printf() calls
+from mixing their output, which looks confusing. */
+static mut CONSOLE_LOCK: Lock = Lock::EMPTY;
+
 /* True in ordinary circumstances: we want to use the console
-lock to avoid mixing output between threads.  False in early
-boot or after a kernel panic. */
+lock to avoid mixing output between threads, as explained
+above.
+
+False in early boot before the point that locks are functional
+or the console lock has been initialized, or after a kernel
+panics. */
 static mut USE_CONSOLE_LOCK: bool = false;
+
+/* It's possible, if you add enough debug output to Pintos, to
+try to recursively grab console_lock from a single thread.  We
+avoid the problem by simulating a recursive lock with a depth
+counter. */
+static mut CONSOLE_LOCK_DEPTH: i32 = 0;
 
 /* Number of characters written to console. */
 static mut WRITE_CNT: i64 = 0;
 
-/* Enable console locking.  (M1: initializes the console lock.) */
+/* Enable console locking. */
 pub fn console_init() {
-    // M0: locks unavailable; C leaves use_console_lock false until here.
+    unsafe {
+        lock_init(&raw mut CONSOLE_LOCK);
+        USE_CONSOLE_LOCK = true;
+    }
 }
 
 /* Notifies the console that a kernel panic is underway,
@@ -43,20 +66,40 @@ pub fn console_print_stats() {
     }
 }
 
-/* Acquires the console lock.  M0: no-op (use_console_lock false). */
+/* Acquires the console lock. */
 fn acquire_console() {
-    debug_assert!(!intr_context());
+    unsafe {
+        if !intr_context() && USE_CONSOLE_LOCK {
+            if lock_held_by_current_thread(&raw const CONSOLE_LOCK) {
+                CONSOLE_LOCK_DEPTH += 1;
+            } else {
+                lock_acquire(&raw mut CONSOLE_LOCK);
+            }
+        }
+    }
 }
 
-/* Releases the console lock.  M0: no-op. */
+/* Releases the console lock. */
 fn release_console() {
-    debug_assert!(!intr_context());
+    unsafe {
+        if !intr_context() && USE_CONSOLE_LOCK {
+            if CONSOLE_LOCK_DEPTH > 0 {
+                CONSOLE_LOCK_DEPTH -= 1;
+            } else {
+                lock_release(&raw mut CONSOLE_LOCK);
+            }
+        }
+    }
 }
 
-/* Returns true if the current thread "has" the console lock,
-which is trivially so when no locking is in use. */
+/* Returns true if the current thread has the console lock,
+false otherwise. */
 fn console_locked_by_current_thread() -> bool {
-    intr_context() || unsafe { !USE_CONSOLE_LOCK }
+    unsafe {
+        intr_context()
+            || !USE_CONSOLE_LOCK
+            || lock_held_by_current_thread(&raw const CONSOLE_LOCK)
+    }
 }
 
 /// The standard vprintf() function: writes formatted output to both

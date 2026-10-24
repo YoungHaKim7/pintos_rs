@@ -1,3 +1,4 @@
+*.txt
 build/
 pintos
 Kernel_dev_in_Rust/

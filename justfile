@@ -7,7 +7,7 @@
 #   just gdb              # QEMU waiting for gdb (attach: just gdb-attach)
 #   just clean
 
-pintos_util := "../pintos-kaist/utils/pintos"
+pintos_util := "../tools/pintos.py"
 arch        := "targets/x86_64-pintos.json"
 elf         := "target/x86_64-pintos/debug/pintos_rs"
 

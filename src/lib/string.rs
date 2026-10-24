@@ -124,12 +124,13 @@ If no NUL terminator is found within that many characters,
 returns MAXLEN. */
 pub unsafe fn strnlen(string: *const u8, maxlen: usize) -> usize {
     unsafe {
-        let mut p = string;
-        let end = string.wrapping_add(maxlen);
-        while p < end && *p != 0 {
-            p = p.add(1);
+        /* Index-based like C: pointer arithmetic would wrap when
+        maxlen is usize::MAX (the no-precision %s case). */
+        let mut n = 0;
+        while n < maxlen && *string.add(n) != 0 {
+            n += 1;
         }
-        p.offset_from(string) as usize
+        n
     }
 }
 

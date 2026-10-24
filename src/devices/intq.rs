@@ -35,6 +35,17 @@ pub struct Intq {
     pub not_full: *mut Thread,  /* Thread waiting for not-full condition. */
 }
 
+impl Intq {
+    /// All-zero queue (call `intq_init` before use).
+    pub const EMPTY: Intq = Intq {
+        buf: [0; INTQ_BUFSIZE],
+        head: 0,
+        tail: 0,
+        not_empty: core::ptr::null_mut(),
+        not_full: core::ptr::null_mut(),
+    };
+}
+
 /* Initializes interrupt queue Q. */
 pub unsafe fn intq_init(q: *mut Intq) {
     unsafe {
