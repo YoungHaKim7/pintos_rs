@@ -13,7 +13,8 @@ use crate::filesys::fat::{
     sector_to_cluster,
 };
 use crate::lib::kernel::list::{
-    List, list_begin, list_end, list_entry, list_init, list_next, list_push_front, list_remove,
+    List, ListElem, list_begin, list_end, list_entry, list_init, list_next, list_push_front,
+    list_remove,
 };
 use crate::lib::string::{memcpy, memset};
 use crate::threads::malloc::{calloc, free, malloc};

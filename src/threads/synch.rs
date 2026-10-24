@@ -176,14 +176,21 @@ pub unsafe fn sema_up(sema: *mut Semaphore) {
             thread_unblock(t);
 
             /* If the woken thread has higher priority than the
-            running thread, yield the CPU. */
+            running thread, arrange to yield the CPU: from an
+            interrupt handler this must be deferred to intr_exit
+            (thread_yield asserts !intr_context), otherwise it
+            can happen right away. */
             let cur = thread_current();
             if thread_cmp_priority(
                 core::ptr::addr_of!((*t).elem),
                 core::ptr::addr_of!((*cur).elem),
                 core::ptr::null_mut(),
             ) {
-                thread_yield();
+                if intr_context() {
+                    crate::threads::interrupt::intr_yield_on_return();
+                } else {
+                    thread_yield();
+                }
             }
         }
         intr_set_level(old_level);
