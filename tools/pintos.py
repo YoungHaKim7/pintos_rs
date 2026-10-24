@@ -10,10 +10,15 @@ with serial on stdio.  The kernel powers QEMU off itself by writing
 
 Usage:
   tools/pintos.py [--disk OS.DSK] [--fs-disk MB] [--swap-disk MB]
-                  [--timeout SEC] [-- KERNEL-ARGS...]
+                  [-p HOST[:GUEST]]... [--timeout SEC]
+                  [-- KERNEL-ARGS...]
+
+Files named with -p are staged onto a scratch disk (attached at
+IDE index 2) with "PUT" headers; the kernel command line gains a
+matching `put GUEST' action (port of filesys/fsutil.c flow).
 
 Example:
-  tools/pintos.py -- -q -threads-tests run alarm-single
+  tools/pintos.py -p build/args-single -- -q run args-single
 """
 
 import argparse
@@ -22,6 +27,7 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 
 # Boot-sector file offsets (loader.h constants minus LOADER_BASE).
 LOADER_ARG_CNT_OFF = 0x17A
@@ -30,6 +36,12 @@ LOADER_ARGS_LEN = 128
 LOADER_SIG_OFF = 0x1FE
 
 QEMU = "qemu-system-x86_64"
+
+
+def align512(data: bytes) -> bytes:
+    if len(data) % 512:
+        data += b"\0" * (512 - len(data) % 512)
+    return data
 
 
 def patch_args(disk: bytes, args: list[str]) -> bytes:
@@ -64,6 +76,26 @@ def attach_drives(build: str, fs_mb: int, swap_mb: int) -> list[str]:
     return drives
 
 
+def stage_scratch(puts: list[str]) -> str | None:
+    """Writes the -p files into a scratch disk image (index 2)."""
+    if not puts:
+        return None
+    fd, path = tempfile.mkstemp(suffix=".dsk", prefix="scratch-")
+    with os.fdopen(fd, "wb") as disk:
+        for spec in puts:
+            host, _, guest = spec.partition(":")
+            guest = guest or os.path.basename(host)
+            with open(host, "rb") as hf:
+                data = hf.read()
+            disk.write(b"PUT\0" + struct.pack("<I", len(data)) + b"\0" * 504)
+            disk.write(align512(data))
+            staged_guests.append(guest)
+    return path
+
+
+staged_guests: list[str] = []
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--disk", default="os.dsk")
@@ -71,6 +103,8 @@ def main() -> None:
     ap.add_argument("--swap-disk", type=int, default=0, metavar="MB")
     ap.add_argument("--timeout", type=float, default=60.0, metavar="SEC")
     ap.add_argument("--gdb", action="store_true", help="wait for gdb on :1234")
+    ap.add_argument("-p", "--put-file", dest="puts", action="append", default=[],
+                    metavar="HOST[:GUEST]")
     ap.add_argument("kernel_args", nargs="*", default=[])
     opts, passthrough = ap.parse_known_args()
     if passthrough:
@@ -79,16 +113,34 @@ def main() -> None:
 
     disk_path = os.path.abspath(opts.disk)
     with open(disk_path, "rb") as f:
-        image = patch_args(f.read(), opts.kernel_args)
+        image = f.read()
+
+    scratch = stage_scratch(opts.puts)
+
+    # Kernel arguments: options first, then the `put' actions, then
+    # the remaining (action) arguments.
+    kernel_args = list(opts.kernel_args)
+    puts_at = len(kernel_args)
+    for i, a in enumerate(kernel_args):
+        if not a.startswith("-"):
+            puts_at = i
+            break
+    put_actions = [x for g in staged_guests for x in ("put", g)]
+    kernel_args[puts_at:puts_at] = put_actions
+
     run_path = disk_path + ".run"
     with open(run_path, "wb") as f:
-        f.write(image)
+        f.write(patch_args(image, kernel_args))
 
     build = os.path.dirname(disk_path)
     cmd = [
         QEMU,
         "-drive", f"file={run_path},format=raw,index=0,media=disk",
         *attach_drives(build, opts.fs_disk, opts.swap_disk),
+    ]
+    if scratch:
+        cmd += ["-drive", f"file={scratch},format=raw,index=2,media=disk"]
+    cmd += [
         "-display", "none",
         "-serial", "stdio",
         "-monitor", "none",
@@ -98,16 +150,23 @@ def main() -> None:
     if opts.gdb:
         cmd += ["-S", "-gdb", "tcp::1234"]
 
-    proc = subprocess.Popen(cmd)
     try:
-        rc = proc.wait(timeout=opts.timeout)
-    except subprocess.TimeoutExpired:
-        print(f"\npintos: timeout after {opts.timeout:g}s, killing QEMU",
-              file=sys.stderr)
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        proc.wait()
-        sys.exit(1)
-    sys.exit(rc)
+        proc = subprocess.Popen(cmd)
+        try:
+            rc = proc.wait(timeout=opts.timeout)
+        except subprocess.TimeoutExpired:
+            print(f"\npintos: timeout after {opts.timeout:g}s, killing QEMU",
+                  file=sys.stderr)
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            proc.wait()
+            sys.exit(1)
+        sys.exit(rc)
+    finally:
+        if scratch:
+            try:
+                os.unlink(scratch)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

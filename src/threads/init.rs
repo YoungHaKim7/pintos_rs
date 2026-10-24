@@ -232,11 +232,10 @@ unsafe fn run_task(argv: *mut *mut u8) {
         if THREAD_TESTS {
             crate::tests::run_test(task);
         } else {
-            /* USERPROG path: load and exec the named user program.
-            (userprog milestone; until then, threads tests work via
-            -threads-tests.) */
-            // TODO(userprog): process_wait(process_create_initd(task))
-            crate::tests::run_test(task);
+            /* USERPROG path: load and exec the named user
+            program, then wait for it. */
+            let tid = crate::userprog::process::process_create_initd(task);
+            crate::userprog::process::process_wait(tid);
         }
         vprintf("Execution of '%s' complete.\n", &[Arg::Raw(task)]);
     }
@@ -252,11 +251,38 @@ unsafe fn run_actions(mut argv: *mut *mut u8) {
             argc: usize,
             function: unsafe fn(*mut *mut u8),
         }
-        static ACTIONS: &[Action] = &[Action {
-            name: b"run\0",
-            argc: 2,
-            function: run_task,
-        }];
+        static ACTIONS: &[Action] = &[
+            Action {
+                name: b"run\0",
+                argc: 2,
+                function: run_task,
+            },
+            Action {
+                name: b"put\0",
+                argc: 2,
+                function: crate::filesys::fsutil::fsutil_put,
+            },
+            Action {
+                name: b"get\0",
+                argc: 2,
+                function: crate::filesys::fsutil::fsutil_get,
+            },
+            Action {
+                name: b"ls\0",
+                argc: 1,
+                function: crate::filesys::fsutil::fsutil_ls,
+            },
+            Action {
+                name: b"cat\0",
+                argc: 2,
+                function: crate::filesys::fsutil::fsutil_cat,
+            },
+            Action {
+                name: b"rm\0",
+                argc: 2,
+                function: crate::filesys::fsutil::fsutil_rm,
+            },
+        ];
 
         while !(*argv).is_null() {
             /* Find action name. */

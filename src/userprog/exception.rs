@@ -8,7 +8,7 @@ use crate::threads::interrupt::{
     intr_register_int,
 };
 use crate::threads::loader::{SEL_KCSEG, SEL_UCSEG};
-use crate::threads::thread::{thread_exit, thread_name};
+use crate::threads::thread::{thread_current, thread_exit, thread_name};
 
 /* Page-fault error code bits (exception.h PF_*). */
 pub const PF_P: u64 = 1 << 0; /* 0: not-present page. 1: rights violation. */
@@ -101,6 +101,11 @@ extern "C" fn page_fault(f: *mut IntrFrame) {
                 "kernel".as_bytes()
             },
         );
+        if user {
+            /* A user-mode fault is the process's own doing:
+            terminate it with exit(-1) (project 2). */
+            (*thread_current()).exit_status = -1;
+        }
         kill(f);
     }
 }

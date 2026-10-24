@@ -85,18 +85,43 @@ def extract_body(out: str, test: str) -> list[str]:
     return lines[begin : end + 1]
 
 
-def ck_expected(test: str) -> list[str]:
-    """Expected heredoc lines from the test's .ck file."""
+def ck_expected(test: str) -> tuple[list[str], set[str]]:
+    """Expected heredoc lines and options from the test's .ck file."""
     with open(os.path.join(CK_DIR, f"{test}.ck")) as f:
         text = f.read()
-    m = re.search(r"<<'EOF'[^\n]*\n(.*?)\nEOF\n", text, re.S)
+    m = re.search(r"check_expected\s*\((.*?)\[$", text, re.M | re.S)
+    options = set(re.findall(r"(IGNORE_USER_FAULTS|IGNORE_EXIT_CODES)", text))
+    m = re.search(r"<<'EOF'\];?\n(.*?)\nEOF\n", text, re.S) or re.search(
+        r"<<'EOF'[^\n]*\n(.*?)\nEOF\n", text, re.S
+    )
     if not m:
         raise TestFailure(f".ck for {test} has no plain EOF block")
-    return m.group(1).splitlines()
+    return m.group(1).splitlines(), options
+
+
+def apply_filters(body: list[str], options: set[str]) -> list[str]:
+    """The tests.pm compare_output output filters."""
+    out = body
+    if "IGNORE_EXIT_CODES" in options:
+        out = [l for l in out if not re.match(r"^[a-zA-Z0-9-_]+: exit\(-?\d+\)$", l)]
+    if "IGNORE_USER_FAULTS" in options:
+        out = [
+            l
+            for l in out
+            if not re.match(r"^Page fault at.*in user context\.$", l)
+            and not re.search(r": dying due to interrupt 0x0e \(.*\)\.$", l)
+            and not re.match(r"^Interrupt 0x0e \(.*\) at eip=", l)
+            and not re.match(r"^ cr2=.* error=.*", l)
+            and not re.match(r"^ eax=.* ebx=.* ecx=.* edx=.*", l)
+            and not re.match(r"^ esi=.* edi=.* esp=.* ebp=.*", l)
+            and not re.match(r"^ cs=.* ds=.* es=.* ss=.*", l)
+        ]
+    return out
 
 
 def check_expected(test: str, body: list[str]) -> None:
-    expected = ck_expected(test)
+    expected, options = ck_expected(test)
+    body = apply_filters(body, options)
     for i, (got, want) in enumerate(zip(body, expected)):
         if got != want:
             raise TestFailure(f"line {i}: got `{got}', want `{want}'")

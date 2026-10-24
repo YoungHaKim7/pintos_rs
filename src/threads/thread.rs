@@ -70,6 +70,24 @@ pub struct Thread {
     /* Owned by userprog/process.rs. */
     pub pml4: *mut u64, /* Page map level 4 */
 
+    /* --- Project 2 (userprog) bookkeeping. --- */
+    /// Child-process records (List of process::ChildInfo::elem),
+    /// for process_wait.
+    pub children: List,
+    /// This process's own child-record in its parent's list
+    /// (filled in by whoever creates the thread's aux before it
+    /// runs); the record outlives this thread's page because the
+    /// parent allocates it.
+    pub child_info: *mut core::ffi::c_void,
+    /// Exit status delivered to the parent via ChildInfo.
+    pub exit_status: i32,
+    /// Open file table; index 0/1 are stdin/stdout by convention.
+    pub fd_table: [*mut crate::filesys::file::File; 128],
+    /// Next file descriptor to hand out (starts at 2).
+    pub next_fd: i32,
+    /// This process's executable (write-denied while running).
+    pub executable: *mut crate::filesys::file::File,
+
     /* Owned by vm/ (supplemental page table). */
     pub spt: crate::vm::SupplementalPageTable,
 
@@ -749,6 +767,8 @@ unsafe fn init_thread(t: *mut Thread, name: *const u8, priority: i32) {
         (*t).recent_cpu = 0;
         (*t).waiting_lock = core::ptr::null_mut();
         list_init(&raw mut (*t).acquired_locks);
+        list_init(&raw mut (*t).children);
+        (*t).next_fd = 2;
         (*t).magic = THREAD_MAGIC;
     }
 }

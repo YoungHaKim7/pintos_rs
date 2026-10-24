@@ -3,6 +3,7 @@
 pub mod directory;
 pub mod fat;
 pub mod file;
+pub mod fsutil;
 pub mod inode;
 
 use crate::devices::disk::{Disk, disk_get};
@@ -107,6 +108,11 @@ unsafe fn do_format() {
 
         /* Create FAT and save it to the disk. */
         fat::fat_create();
+
+        /* Create the root directory (its inode lives in the root
+        cluster). */
+        directory::dir_create(fat::cluster_to_sector(fat::ROOT_DIR_CLUSTER), 16);
+
         fat::fat_close();
 
         crate::printf!("done.\n");
