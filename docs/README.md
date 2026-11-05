@@ -1,6 +1,11 @@
 # pintos_rs
 - https://github.com/casys-kaist/pintos-kaist
 
+## 막힐때 마다 참고하는 사이트 잘 정리됨.
+
+### 메모리 관리/MMU & TLB
+- https://www.minzkn.com/linuxkernel/pages/mmu-tlb.html
+
 # 내가 만들고 있는것들
 - 완성
   - https://github.com/YoungHaKim7/minix_arm
