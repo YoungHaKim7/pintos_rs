@@ -897,6 +897,10 @@ unsafe fn setup_arguments(if_: *mut IntrFrame, argv: *const *mut u8, argc: usize
             argv_addrs[i] = rsp;
         }
 
+        /* Round the string area's bottom down to a word boundary
+        (the string copy is byte-granular). */
+        rsp &= !7;
+
         /* argv[argc] (NULL sentinel), then the pointer array in
         ascending order. */
         rsp -= 8;
@@ -906,8 +910,9 @@ unsafe fn setup_arguments(if_: *mut IntrFrame, argv: *const *mut u8, argc: usize
             *(rsp as *mut u64) = argv_addrs[i];
         }
 
-        /* Keep rsp 16-byte aligned at process entry. */
-        while rsp % 16 != 0 {
+        /* One more 8-byte pad if needed so that rsp is 16-byte
+        aligned at process entry. */
+        if rsp % 16 != 0 {
             rsp -= 8;
             *(rsp as *mut u64) = 0;
         }

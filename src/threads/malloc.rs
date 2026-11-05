@@ -257,9 +257,6 @@ unsafe fn block_to_arena(b: *mut Block) -> *mut Arena {
                     % (*(*a).desc).block_size
                     == 0
         );
-        crate::ASSERT!(
-            (*a).desc.is_null() || pg_ofs(b as u64) as usize == core::mem::size_of::<Arena>()
-        );
 
         a
     }
