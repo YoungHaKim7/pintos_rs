@@ -58,8 +58,7 @@ const SYS_DUP2: u64 = 22;
 const FD_MAX: i32 = 128;
 
 unsafe extern "C" {
-    #[link_name = "syscall_entry"]
-    static SYSCALL_ENTRY: extern "C" fn();
+    fn syscall_entry();
 }
 
 /* System call setup: program the syscall MSRs. */
@@ -69,7 +68,10 @@ pub unsafe fn syscall_init() {
             MSR_STAR,
             ((SEL_UCSEG as u64) - 0x10) << 48 | ((SEL_KCSEG as u64) << 32),
         );
-        write_msr(MSR_LSTAR, SYSCALL_ENTRY as usize as u64);
+        /* NB: syscall_entry is an assembly label; cast the
+        function item (its code address), not a static holding a
+        pointer. */
+        write_msr(MSR_LSTAR, syscall_entry as usize as u64);
 
         /* The interrupt service routine should not serve any
         interrupts until the syscall_entry swaps the userland

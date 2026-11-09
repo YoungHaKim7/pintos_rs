@@ -909,6 +909,7 @@ unsafe fn setup_arguments(if_: *mut IntrFrame, argv: *const *mut u8, argc: usize
             rsp -= 8;
             *(rsp as *mut u64) = argv_addrs[i];
         }
+        let argv_addr = rsp;
 
         /* One more 8-byte pad if needed so that rsp is 16-byte
         aligned at process entry. */
@@ -919,7 +920,7 @@ unsafe fn setup_arguments(if_: *mut IntrFrame, argv: *const *mut u8, argc: usize
 
         (*if_).rsp = rsp;
         (*if_).R.rdi = argc as u64;
-        (*if_).R.rsi = rsp;
+        (*if_).R.rsi = argv_addr;
         true
     }
 }

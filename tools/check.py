@@ -31,6 +31,50 @@ ALARM_TESTS = {"alarm-single": 1, "alarm-multiple": 7}
 # rather than a fixed expected block.
 FIFO_TEST = "priority-fifo"
 
+# ------------------------------------------------------------------ #
+# userprog suite (tests/userprog/Make.tests)                          #
+# ------------------------------------------------------------------ #
+UPROG_DIR = os.path.join(ROOT, "build", "userprogs")
+SAMPLE_TXT = os.path.join(KAIST, "tests", "userprog", "sample.txt")
+
+USERPROG_ARGS = {
+    "args-single": "onearg",
+    "args-multiple": "some arguments for you!",
+    "args-many": "a b c d e f g h i j k l m n o p q r s t u v",
+    "args-dbl-space": "two  spaces!",
+    "multi-recurse": "15",
+}
+
+USERPROG_PUTFILES = {}
+for _t in [
+    "open-normal", "open-boundary", "open-twice", "close-normal", "close-twice",
+    "read-normal", "read-bad-ptr", "read-boundary", "read-zero", "write-normal",
+    "write-bad-ptr", "write-boundary", "write-zero", "fork-read", "fork-close",
+    "exec-read", "multi-child-fd",
+]:
+    USERPROG_PUTFILES[_t] = ["sample.txt"]
+for _t, _children in {
+    "exec-boundary": ["child-simple"], "exec-once": ["child-simple"],
+    "wait-simple": ["child-simple"], "wait-twice": ["child-simple"],
+    "exec-arg": ["child-args"], "multi-child-fd": ["child-close"],
+    "wait-killed": ["child-bad"], "rox-child": ["child-rox"],
+    "rox-multichild": ["child-rox"], "exec-read": ["child-read"],
+}.items():
+    USERPROG_PUTFILES.setdefault(_t, []).extend(_children)
+
+
+def run_qemu_userprog(test: str) -> str:
+    cmd = ["python3", os.path.join(HERE, "pintos.py"),
+           "--disk", "build/os.dsk", "--fs-disk", "4",
+           "--timeout", "90"]
+    cmd += ["-p", os.path.join(UPROG_DIR, test)]
+    for extra in USERPROG_PUTFILES.get(test, []):
+        host = SAMPLE_TXT if extra == "sample.txt" else os.path.join(UPROG_DIR, extra)
+        cmd += ["-p", host]
+    cmd += ["--", "-q", "-f", "run", f"{test} {USERPROG_ARGS.get(test, '')}".strip()]
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    return proc.stdout + proc.stderr
+
 TIMEOUT = {"alarm-priority": 120, "alarm-multiple": 120}
 
 
@@ -71,17 +115,28 @@ def common_checks(out: str) -> None:
 
 
 def extract_body(out: str, test: str) -> list[str]:
-    """The (test) begin .. (test) end block, inclusive."""
+    """The (name) begin .. (name) end block, inclusive.
+
+    The test program picks its own display name (e.g. all args-*
+    tests print as "(args)"), so match generically: the first
+    begin marker's name, and the last end marker with that name.
+    """
     lines = out.splitlines()
-    begin, end = None, None
+    begin_name = None
     for i, l in enumerate(lines):
-        if l == f"({test}) begin" and begin is None:
+        m = re.match(r"^\(([\w.-]+)\) begin$", l)
+        if m:
+            begin_name = m.group(1)
             begin = i
-        elif l == f"({test}) end" and begin is not None:
-            end = i
             break
-    if begin is None or end is None:
+    if begin_name is None:
         raise TestFailure("missing (test) begin/end markers")
+    end = None
+    for i, l in enumerate(lines):
+        if l == f"({begin_name}) end":
+            end = i
+    if end is None:
+        raise TestFailure("missing (test) end marker")
     return lines[begin : end + 1]
 
 
@@ -166,7 +221,13 @@ def check_fifo(body: list[str]) -> None:
         raise TestFailure(f"{len(iterations)} iterations, {iter_cnt} expected")
 
 
-def check_one(test: str) -> None:
+def check_one(test: str, suite: str = "threads") -> None:
+    if suite == "userprog":
+        out = run_qemu_userprog(test)
+        common_checks(out)
+        body = extract_body(out, test)
+        check_expected(test, body)
+        return
     out = run_qemu(test)
     common_checks(out)
     body = extract_body(out, test)
@@ -182,19 +243,29 @@ def main() -> None:
     args = sys.argv[1:]
     if not args:
         sys.exit(__doc__)
+    suite = "threads"
+    if args[0] in ("--threads", "--userprog"):
+        suite = args[0][2:]
+        args = args[1:]
+    global CK_DIR
+    CK_DIR = os.path.join(KAIST, "tests", suite)
+    if not args:
+        sys.exit("no tests given")
     if args[0] == "--all":
-        args = sorted(
-            f[:-3]
-            for f in os.listdir(CK_DIR)
-            if f.endswith(".ck") and f[:-3] not in ("mlfqs-load-60",)
-        )
-        # mlfqs suite is a separate scheduler; not yet ported.
-        args = [t for t in args if not t.startswith("mlfqs-")]
+        args = sorted(f[:-3] for f in os.listdir(CK_DIR) if f.endswith(".ck"))
+        if suite == "threads":
+            # mlfqs suite is a separate scheduler; not yet ported.
+            args = [t for t in args if not t.startswith("mlfqs-")]
+        else:
+            # 'null' has no program; 'persistence' needs prior state.
+            args = [t for t in args if t != "null" and "persistence" not in t]
+        known = set(USERPROG_ARGS) | {f[:-3] for f in os.listdir(UPROG_DIR)}
+        args = [t for t in args if t in known]
 
     failures = 0
     for test in args:
         try:
-            check_one(test)
+            check_one(test, suite)
             print(f"PASS {test}")
         except TestFailure as e:
             failures += 1
